@@ -33,11 +33,6 @@ To provide a robust, scriptable interface for validating configurations, data in
 - **Check Attribute Usage**: Verify attributes exist
 - **Replicate Dashboards**: Copy dashboards between accounts
 
-### Alert Intelligence Module
-- **List Policies**: Browse alert policies with filters
-- **Validate Conditions**: Check alert query validity
-- **Threshold Viability**: Analyze if thresholds are appropriate
-- **Find Unstable Alerts**: Identify flapping alerts
 
 ### Entity Intelligence Module
 - **Describe Entities**: Get entity details and relationships
@@ -144,21 +139,6 @@ nr-guardian dashboard analyze-performance <dashboard-guid>
 nr-guardian dashboard replicate <dashboard-guid> --targets "12345,67890" --update-queries
 ```
 
-### Alert Operations
-
-```bash
-# List alert policies
-nr-guardian alert list-policies --name-pattern "production"
-
-# Validate alert condition
-nr-guardian alert validate-condition "My Policy" "Response Time Alert"
-
-# Check threshold viability
-nr-guardian alert check-threshold-viability "My Policy" "CPU Alert" --lookback "30 days ago"
-
-# Find unstable alerts
-nr-guardian alert find-unstable-alerts --flap-threshold 10
-```
 
 ### Entity Operations
 

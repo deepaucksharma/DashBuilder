@@ -11,7 +11,6 @@ import fs from 'fs/promises';
 import { SchemaCommand } from './commands/schema.js';
 import { NRQLCommand } from './commands/nrql.js';
 import { DashboardCommand } from './commands/dashboard.js';
-import { AlertCommand } from './commands/alert.js';
 import { EntityCommand } from './commands/entity.js';
 import { IngestCommand } from './commands/ingest.js';
 import { LLMCommand } from './commands/llm.js';
@@ -49,7 +48,6 @@ async function main() {
   program.addCommand(new SchemaCommand().getCommand());
   program.addCommand(new NRQLCommand().getCommand());
   program.addCommand(new DashboardCommand().getCommand());
-  program.addCommand(new AlertCommand().getCommand());
   program.addCommand(new EntityCommand().getCommand());
   program.addCommand(new IngestCommand().getCommand());
   program.addCommand(new LLMCommand().getCommand());

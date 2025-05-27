@@ -1,17 +1,47 @@
 import { NerdGraphClient } from '../core/api-client.js';
+import { SchemaService } from './schema.service.js';
 import { Cache } from '../utils/cache.js';
 import { logger } from '../utils/logger.js';
-import { extractEventTypeFromQuery, extractAttributesFromQuery } from '../utils/validators.js';
+import { extractEventTypeFromQuery, extractAttributesFromQuery, calculateQueryComplexity } from '../utils/validators.js';
 import { ValidationError } from '../utils/errors.js';
 
 export class IngestService {
   constructor(config) {
     this.config = config;
     this.client = new NerdGraphClient(config);
+    this.schemaService = new SchemaService(config);
     this.cache = new Cache({ 
       enabled: config.enableCache, 
       ttl: 300 // 5 minute cache for ingest metrics
     });
+    
+    // NRDOT v2: Cost estimation models
+    this.costModels = {
+      processMetrics: {
+        baseIngestionCostPerGB: 0.25,  // Base cost per GB ingested
+        queryExecutionMultiplier: 0.1,  // Cost per query execution
+        storageRetentionMultiplier: 0.05  // Storage cost per GB per month
+      },
+      queryOptimization: {
+        complexityFactors: {
+          low: 1.0,
+          medium: 1.5,
+          high: 2.5
+        },
+        cardinalityImpact: {
+          low: 1.0,     // <1000 unique values
+          medium: 1.3,   // 1000-10000 unique values
+          high: 2.0      // >10000 unique values
+        }
+      }
+    };
+    
+    // NRDOT v2: Process metrics cost optimization thresholds
+    this.optimizationThresholds = {
+      highVolumeEventTypes: 1000000,  // Events per day
+      highCardinalityAttributes: 10000,  // Unique values
+      expensiveQueryComplexity: 'high'
+    };
   }
 
   async getDataVolume(options = {}) {
@@ -520,5 +550,319 @@ export class IngestService {
 
   formatNumber(num) {
     return new Intl.NumberFormat().format(num);
+  }
+
+  // NRDOT v2: Process metrics cost analysis
+  async analyzeProcessMetricsCost(options = {}) {
+    const accountId = this.config.requireAccountId();
+    const since = options.since || '24 hours ago';
+    
+    const analysis = {
+      totalProcessEvents: 0,
+      estimatedDailyCost: 0,
+      estimatedMonthlyCost: 0,
+      costBreakdown: {
+        ingestion: 0,
+        storage: 0,
+        queryExecution: 0
+      },
+      optimizationOpportunities: [],
+      recommendations: []
+    };
+
+    try {
+      // Get ProcessSample volume
+      const processVolume = await this.getEventTypeVolume(accountId, 'ProcessSample', since);
+      analysis.totalProcessEvents = processVolume.eventCount;
+      
+      // Calculate daily rate
+      const timeRangeDays = this.parseTimeRangeToDays(since);
+      const dailyEvents = analysis.totalProcessEvents / timeRangeDays;
+      const dailyGB = (processVolume.estimatedBytes / timeRangeDays) / (1024 * 1024 * 1024);
+      
+      // Calculate cost components
+      analysis.costBreakdown.ingestion = dailyGB * this.costModels.processMetrics.baseIngestionCostPerGB;
+      analysis.costBreakdown.storage = dailyGB * this.costModels.processMetrics.storageRetentionMultiplier * 30; // Monthly
+      
+      // Estimate query execution costs based on typical query patterns
+      const avgQueriesPerDay = 100; // Estimate based on typical dashboard usage
+      analysis.costBreakdown.queryExecution = avgQueriesPerDay * this.costModels.processMetrics.queryExecutionMultiplier;
+      
+      analysis.estimatedDailyCost = analysis.costBreakdown.ingestion + 
+                                   (analysis.costBreakdown.storage / 30) + 
+                                   analysis.costBreakdown.queryExecution;
+      
+      analysis.estimatedMonthlyCost = analysis.estimatedDailyCost * 30;
+
+      // Analyze high-volume processes
+      await this.analyzeHighVolumeProcesses(accountId, since, analysis);
+      
+      // Check for optimization opportunities
+      await this.identifyProcessOptimizations(accountId, since, analysis);
+      
+      // Generate cost reduction recommendations
+      analysis.recommendations = this.generateCostRecommendations(analysis);
+
+    } catch (error) {
+      analysis.error = `Failed to analyze process metrics cost: ${error.message}`;
+      logger.debug(`Process cost analysis failed: ${error.message}`);
+    }
+
+    return analysis;
+  }
+
+  // NRDOT v2: Analyze high-volume processes
+  async analyzeHighVolumeProcesses(accountId, since, analysis) {
+    try {
+      const query = `
+        SELECT count(*) as eventCount, 
+               average(timestamp - lag(timestamp)) as avgInterval
+        FROM ProcessSample 
+        FACET processDisplayName, hostname 
+        SINCE ${since} 
+        LIMIT 50
+      `;
+      
+      const result = await this.client.nrql(accountId, query);
+      const highVolumeProcesses = [];
+      
+      for (const item of result.results) {
+        const eventCount = item.eventCount || 0;
+        const processName = item.facet ? item.facet[0] : 'Unknown';
+        const hostname = item.facet ? item.facet[1] : 'Unknown';
+        
+        if (eventCount > this.optimizationThresholds.highVolumeEventTypes / 10) { // Adjust for time period
+          highVolumeProcesses.push({
+            processName,
+            hostname,
+            eventCount,
+            estimatedDailyCost: (eventCount * 500) / (1024 * 1024 * 1024) * this.costModels.processMetrics.baseIngestionCostPerGB
+          });
+        }
+      }
+      
+      if (highVolumeProcesses.length > 0) {
+        analysis.optimizationOpportunities.push({
+          type: 'High Volume Processes',
+          count: highVolumeProcesses.length,
+          processes: highVolumeProcesses.slice(0, 10), // Top 10
+          potentialSavings: highVolumeProcesses.reduce((sum, p) => sum + p.estimatedDailyCost, 0) * 0.3 // 30% potential reduction
+        });
+      }
+      
+    } catch (error) {
+      logger.debug(`Failed to analyze high-volume processes: ${error.message}`);
+    }
+  }
+
+  // NRDOT v2: Identify process optimization opportunities
+  async identifyProcessOptimizations(accountId, since, analysis) {
+    const optimizations = [];
+    
+    try {
+      // Check for redundant process monitoring
+      const redundancyQuery = `
+        SELECT count(*) as processCount
+        FROM ProcessSample 
+        WHERE processDisplayName IN ('java', 'python', 'node', 'nginx', 'mysql', 'postgres')
+        FACET hostname 
+        SINCE ${since}
+      `;
+      
+      const redundancyResult = await this.client.nrql(accountId, redundancyQuery);
+      let totalRedundantProcesses = 0;
+      
+      for (const item of redundancyResult.results) {
+        const processCount = item.processCount || 0;
+        if (processCount > 50) { // More than 50 processes per host might be excessive
+          totalRedundantProcesses += processCount - 25; // Keep 25, consider rest as redundant
+        }
+      }
+      
+      if (totalRedundantProcesses > 0) {
+        optimizations.push({
+          type: 'Excessive Process Monitoring',
+          description: 'Some hosts are monitoring too many processes',
+          impact: `${totalRedundantProcesses} potentially redundant process samples`,
+          potentialSavings: (totalRedundantProcesses * 500 * 24) / (1024 * 1024 * 1024) * this.costModels.processMetrics.baseIngestionCostPerGB * 30
+        });
+      }
+      
+      // Check for high-frequency sampling
+      const samplingQuery = `
+        SELECT count(*) as samples, 
+               (max(timestamp) - min(timestamp)) / 1000 as durationSeconds
+        FROM ProcessSample 
+        FACET processDisplayName, hostname
+        SINCE ${since}
+        LIMIT 100
+      `;
+      
+      const samplingResult = await this.client.nrql(accountId, samplingQuery);
+      let highFrequencyProcesses = 0;
+      
+      for (const item of samplingResult.results) {
+        const samples = item.samples || 0;
+        const duration = item.durationSeconds || 1;
+        const frequency = samples / duration;
+        
+        if (frequency > 1/15) { // More than once every 15 seconds
+          highFrequencyProcesses++;
+        }
+      }
+      
+      if (highFrequencyProcesses > 0) {
+        optimizations.push({
+          type: 'High Frequency Sampling',
+          description: 'Some processes are sampled too frequently',
+          impact: `${highFrequencyProcesses} processes with high-frequency sampling`,
+          potentialSavings: highFrequencyProcesses * 0.1 * analysis.estimatedDailyCost
+        });
+      }
+      
+      analysis.optimizationOpportunities.push(...optimizations);
+      
+    } catch (error) {
+      logger.debug(`Failed to identify process optimizations: ${error.message}`);
+    }
+  }
+
+  // NRDOT v2: Generate cost reduction recommendations
+  generateCostRecommendations(analysis) {
+    const recommendations = [];
+    
+    // High volume recommendations
+    const highVolumeOpp = analysis.optimizationOpportunities.find(o => o.type === 'High Volume Processes');
+    if (highVolumeOpp) {
+      recommendations.push({
+        category: 'Volume Reduction',
+        priority: 'high',
+        title: 'Reduce high-volume process monitoring',
+        description: `${highVolumeOpp.count} processes are generating high data volume`,
+        action: 'Configure process filters to reduce monitoring scope',
+        potentialSavings: `$${highVolumeOpp.potentialSavings.toFixed(2)}/day`,
+        implementation: [
+          'Use infrastructure agent process filters',
+          'Focus on critical processes only',
+          'Increase sampling intervals for non-critical processes'
+        ]
+      });
+    }
+    
+    // Sampling frequency recommendations
+    const samplingOpp = analysis.optimizationOpportunities.find(o => o.type === 'High Frequency Sampling');
+    if (samplingOpp) {
+      recommendations.push({
+        category: 'Sampling Optimization',
+        priority: 'medium',
+        title: 'Optimize process sampling frequency',
+        description: 'Some processes are sampled more frequently than necessary',
+        action: 'Adjust process_sample_rate configuration',
+        potentialSavings: `$${samplingOpp.potentialSavings.toFixed(2)}/day`,
+        implementation: [
+          'Set process_sample_rate to 60 seconds for most processes',
+          'Use 30 seconds only for critical processes',
+          'Consider 120 seconds for stable, non-critical processes'
+        ]
+      });
+    }
+    
+    // General cost optimization
+    if (analysis.estimatedDailyCost > 10) { // If daily cost exceeds $10
+      recommendations.push({
+        category: 'General Optimization',
+        priority: 'medium',
+        title: 'Implement NRDOT v2 filtering patterns',
+        description: 'Apply intelligent filtering to reduce overall process metrics volume',
+        action: 'Deploy process intelligence filters',
+        potentialSavings: `$${(analysis.estimatedDailyCost * 0.4).toFixed(2)}/day (40% reduction)`,
+        implementation: [
+          'Use Process DNA patterns to identify critical processes',
+          'Apply Conservative profile for stable environments',
+          'Implement dynamic filtering based on process categories',
+          'Enable process count thresholds and hysteresis'
+        ]
+      });
+    }
+    
+    // Query optimization recommendations
+    recommendations.push({
+      category: 'Query Optimization',
+      priority: 'low',
+      title: 'Optimize process metrics queries',
+      description: 'Improve dashboard and alert query efficiency',
+      action: 'Apply query best practices for process metrics',
+      potentialSavings: `$${(analysis.costBreakdown.queryExecution * 0.3).toFixed(2)}/day`,
+      implementation: [
+        'Add LIMIT clauses to process queries',
+        'Use process categories in WHERE clauses',
+        'Avoid high-cardinality FACETs like processId',
+        'Implement query result caching'
+      ]
+    });
+    
+    return recommendations;
+  }
+
+  // NRDOT v2: Process-specific cost estimation for queries
+  async estimateProcessQueryCost(query, options = {}) {
+    const baseEstimate = await this.estimateQueryCost(query);
+    
+    // Enhance with process-specific analysis
+    if (query.includes('ProcessSample')) {
+      const processAnalysis = {
+        ...baseEstimate,
+        processSpecific: {
+          isProcessQuery: true,
+          estimatedProcessCount: 0,
+          processingComplexity: 'low',
+          costMultiplier: 1.0
+        }
+      };
+      
+      try {
+        // Estimate number of processes the query will touch
+        const whereClause = query.match(/WHERE\s+(.+?)(?:FACET|SINCE|LIMIT|$)/i);
+        if (whereClause) {
+          const conditions = whereClause[1].toLowerCase();
+          
+          if (conditions.includes('processDisplayName')) {
+            processAnalysis.processSpecific.estimatedProcessCount = 10; // Specific process
+          } else if (conditions.includes('hostname')) {
+            processAnalysis.processSpecific.estimatedProcessCount = 50; // Host processes
+          } else {
+            processAnalysis.processSpecific.estimatedProcessCount = 500; // All processes
+          }
+        } else {
+          processAnalysis.processSpecific.estimatedProcessCount = 1000; // No WHERE clause
+        }
+        
+        // Calculate complexity based on query patterns
+        const complexity = calculateQueryComplexity(query);
+        processAnalysis.processSpecific.processingComplexity = complexity.level.toLowerCase();
+        
+        // Apply cost multiplier based on process count and complexity
+        const processCountFactor = Math.min(processAnalysis.processSpecific.estimatedProcessCount / 100, 5.0);
+        const complexityFactor = this.costModels.queryOptimization.complexityFactors[processAnalysis.processSpecific.processingComplexity];
+        
+        processAnalysis.processSpecific.costMultiplier = processCountFactor * complexityFactor;
+        
+        // Update cost estimate
+        if (processAnalysis.processSpecific.costMultiplier > 2.0) {
+          processAnalysis.estimatedCost = 'Very High';
+          processAnalysis.optimizations.unshift({
+            suggestion: 'Add process filters to reduce scope',
+            example: `${query.includes('WHERE') ? query.replace('WHERE', 'WHERE hostname = "specific-host" AND') : query.replace('FROM ProcessSample', 'FROM ProcessSample WHERE hostname = "specific-host"')}`
+          });
+        }
+        
+      } catch (error) {
+        logger.debug(`Failed to analyze process query cost: ${error.message}`);
+      }
+      
+      return processAnalysis;
+    }
+    
+    return baseEstimate;
   }
 }

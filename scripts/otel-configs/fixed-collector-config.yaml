@@ -1,0 +1,277 @@
+# Fixed OpenTelemetry Collector Configuration
+# Addresses all audit findings
+
+receivers:
+  hostmetrics:
+    collection_interval: 60s
+    scrapers:
+      process:
+        mute_process_name_error: true
+        mute_process_io_error: true
+        mute_process_user_error: true
+        metrics:
+          process.cpu.time:
+            enabled: true
+          process.memory.physical_usage:
+            enabled: true
+          process.memory.virtual_usage:
+            enabled: true
+          process.disk.io:
+            enabled: true
+        resource_attributes:
+          process.executable.name:
+            enabled: true
+          process.executable.path:
+            enabled: true
+          process.pid:
+            enabled: true
+          process.parent_pid:
+            enabled: true
+          process.owner:
+            enabled: true
+          process.command_line:
+            enabled: true
+        # Use the flattened noise patterns file
+        exclude:
+          names: ${file:/var/lib/nrdot/noise_patterns.yaml}
+
+extensions:
+  memory_ballast:
+    size_mib: 512
+  
+  zpages:
+    endpoint: localhost:55679
+  
+  file_storage:
+    directory: /var/lib/nrdot/storage
+    timeout: 10s
+    compaction:
+      on_rebound: true
+    fsync: true
+  
+  # Enable config watching
+  file_config_provider:
+    paths:
+      - /etc/nrdot-collector-host/optimization.yaml
+    watch_for_updates: true
+    poll_interval: 10s
+
+processors:
+  # Step 1: Resource detection
+  resourcedetection:
+    detectors: [env, system, docker, aws, gcp, azure]
+    system:
+      hostname_sources: ["os", "dns", "lookup"]
+      resource_attributes:
+        host.name:
+          enabled: true
+        host.id:
+          enabled: false
+        os.type:
+          enabled: true
+        os.description:
+          enabled: true
+    override: false
+    timeout: 2s
+
+  # Step 2: Base enrichment with proper profile reading
+  attributes/base_enrichment:
+    actions:
+      - key: nrdot.version
+        value: "2.0.0"
+        action: upsert
+      - key: nrdot.ring
+        value: ${env:NRDOT_RING:-0}
+        action: upsert
+      # Read active profile directly from file
+      - key: nrdot.profile
+        value: ${file:/etc/nrdot-collector-host/optimization.yaml?state.active_profile}
+        action: upsert
+      - key: nrdot.optimization_profile
+        value: ${file:/etc/nrdot-collector-host/optimization.yaml?state.active_profile}
+        action: upsert
+
+  # Step 3: Process scoring - convert to resource attributes
+  metricstransform/scoring:
+    error_mode: ignore
+    log_statements: true
+    metric_statements:
+      - context: metric
+        statements:
+          # Set default importance as resource attribute
+          - set(resource.attributes["process.importance"], 0.3) where resource.attributes["process.executable.name"] != nil
+          
+          # Critical System Processes (1.0)
+          - set(resource.attributes["process.importance"], 1.0) where resource.attributes["os.type"] == "linux" and IsMatch(resource.attributes["process.executable.name"], "^(init|systemd|kernel|sshd|systemd-logind|systemd-networkd|systemd-resolved)$")
+          - set(resource.attributes["process.importance"], 1.0) where resource.attributes["os.type"] == "windows" and IsMatch(resource.attributes["process.executable.name"], "^(System|Registry|smss\\.exe|csrss\\.exe|wininit\\.exe|services\\.exe|lsass\\.exe|svchost\\.exe|winlogon\\.exe)$")
+          
+          # Database Processes (0.9)
+          - set(resource.attributes["process.importance"], 0.9) where IsMatch(resource.attributes["process.executable.name"], "^(postgres|postgresql|mysqld|mariadb|mongod|redis-server|cassandra|elasticsearch|influxd|clickhouse)$")
+          
+          # Web Server Processes (0.8)
+          - set(resource.attributes["process.importance"], 0.8) where IsMatch(resource.attributes["process.executable.name"], "^(nginx|apache2|httpd|caddy|traefik|haproxy|varnish|squid|envoy)$")
+          
+          # Application Processes (0.7)
+          - set(resource.attributes["process.importance"], 0.7) where IsMatch(resource.attributes["process.executable.name"], "^(java|python|node|nodejs|ruby|dotnet|php)$")
+          
+          # Monitoring Processes (0.5)
+          - set(resource.attributes["process.importance"], 0.5) where IsMatch(resource.attributes["process.executable.name"], "^(prometheus|grafana|telegraf|collectd|datadog-agent|newrelic-infra|splunkd|elastic-agent|otelcol)$")
+          
+          # Set classification
+          - set(resource.attributes["process.classification"], "critical_system") where resource.attributes["process.importance"] == 1.0
+          - set(resource.attributes["process.classification"], "database") where resource.attributes["process.importance"] == 0.9
+          - set(resource.attributes["process.classification"], "web_server") where resource.attributes["process.importance"] == 0.8
+          - set(resource.attributes["process.classification"], "application") where resource.attributes["process.importance"] == 0.7
+          - set(resource.attributes["process.classification"], "monitoring") where resource.attributes["process.importance"] == 0.5
+          - set(resource.attributes["process.classification"], "utility") where resource.attributes["process.importance"] == 0.4
+          - set(resource.attributes["process.classification"], "unknown") where resource.attributes["process.importance"] == 0.3
+          - set(resource.attributes["process.classification"], "noise") where resource.attributes["process.importance"] == 0.0
+
+  # Step 4: Simple anomaly detection (replace EWMA placeholder)
+  metricstransform/anomaly:
+    error_mode: ignore
+    metric_statements:
+      - context: metric
+        statements:
+          # Mark high CPU usage as anomaly (>0.5 seconds in collection interval)
+          - set(resource.attributes["process.cpu.is_anomaly"], true) where name == "process.cpu.time" and value > 0.5
+          - set(resource.attributes["process.cpu.is_anomaly"], false) where name == "process.cpu.time" and value <= 0.5
+          
+          # Mark high memory as anomaly (>1GB)
+          - set(resource.attributes["process.memory.is_anomaly"], true) where name == "process.memory.physical_usage" and value > 1073741824
+          - set(resource.attributes["process.memory.is_anomaly"], false) where name == "process.memory.physical_usage" and value <= 1073741824
+          
+          # Overall anomaly flag
+          - set(resource.attributes["process.is_anomaly"], true) where resource.attributes["process.cpu.is_anomaly"] == true or resource.attributes["process.memory.is_anomaly"] == true
+          - set(resource.attributes["process.is_anomaly"], false) where resource.attributes["process.is_anomaly"] == nil
+          - set(resource.attributes["nrdot.anomaly.detected"], true) where resource.attributes["process.is_anomaly"] == true
+
+  # Step 5: Pre-filter KPIs
+  metricstransform/kpis_pre_filter:
+    error_mode: ignore
+    metric_statements:
+      - context: metric
+        statements:
+          # Count total series
+          - set(metric.name, "nrdot_process_series_total") where metric.name == "process.cpu.time"
+          - set(metric.unit, "1")
+          - set(value, 1) where metric.name == "nrdot_process_series_total"
+
+  # Step 6: Optimization filter with proper attribute access
+  filter/optimization:
+    error_mode: ignore
+    metrics:
+      metric:
+        - |
+          resource.attributes["process.importance"] < ${file:/etc/nrdot-collector-host/optimization.yaml?profiles.${env:NRDOT_PROFILE:-conservative}.thresholds.min_importance_score}
+        - |
+          name == "process.cpu.time" and 
+          resource.attributes["process.importance"] < 1.0 and
+          value < ${file:/etc/nrdot-collector-host/optimization.yaml?profiles.${env:NRDOT_PROFILE:-conservative}.thresholds.cpu_threshold_seconds}
+        - |
+          name == "process.memory.physical_usage" and
+          resource.attributes["process.importance"] < 1.0 and
+          value < (${file:/etc/nrdot-collector-host/optimization.yaml?profiles.${env:NRDOT_PROFILE:-conservative}.thresholds.memory_threshold_mb} * 1048576)
+
+  # Step 7: Group by attributes (remove non-existent service.name)
+  groupbyattrs:
+    keys:
+      - host.name
+      - process.executable.name
+      - process.pid
+      - process.classification
+      - nrdot.ring
+
+  # Step 8: Post-filter KPIs
+  metricstransform/kpis_post_filter:
+    error_mode: ignore
+    metric_statements:
+      - context: metric
+        statements:
+          # Count kept series
+          - set(metric.name, "nrdot_process_series_kept") where metric.name == "process.cpu.time"
+          - set(metric.unit, "1")
+          - set(value, 1) where metric.name == "nrdot_process_series_kept"
+          
+          # Critical coverage
+          - set(metric.name, "nrdot_process_coverage_critical") where metric.name == "process.cpu.time" and resource.attributes["process.importance"] >= 0.8
+          - set(metric.unit, "%")
+          - set(value, 100) where metric.name == "nrdot_process_coverage_critical"
+
+  # Step 9: Cost calculation with proper operations
+  metricstransform/cost:
+    error_mode: ignore
+    metric_statements:
+      - context: metric
+        statements:
+          - set(metric.name, "nrdot_estimated_cost_per_hour") where metric.name == "nrdot_process_series_kept"
+          - set(metric.unit, "USD/h")
+          # 60 datapoints per hour, cost per million
+          - set(value, value * 60 / 1000000 * 0.25) where metric.name == "nrdot_estimated_cost_per_hour"
+          - set(metric.name, "nrdot_cost_estimated_hr") where metric.name == "nrdot_estimated_cost_per_hour"
+
+  # Step 10: Memory limiter
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 1024
+    spike_limit_mib: 256
+
+  # Step 11: Batch processing
+  batch:
+    timeout: 30s
+    send_batch_size: 1000
+
+exporters:
+  # OTLP to New Relic
+  otlp/newrelic:
+    endpoint: ${env:NEW_RELIC_OTLP_ENDPOINT}
+    headers:
+      api-key: ${env:NEW_RELIC_API_KEY}
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+  # Fixed Prometheus port (was conflicting with receiver)
+  prometheus/internal:
+    endpoint: "0.0.0.0:8887"
+    namespace: nrdot
+    const_labels:
+      service: "nrdot-collector"
+    metric_expiration: 5m
+    enable_open_metrics: true
+
+  # Debug logging
+  logging:
+    loglevel: info
+    sampling_initial: 10
+    sampling_thereafter: 100
+
+service:
+  pipelines:
+    metrics/process:
+      receivers: [hostmetrics]
+      processors:
+        - resourcedetection
+        - attributes/base_enrichment
+        - metricstransform/scoring
+        - metricstransform/anomaly
+        - metricstransform/kpis_pre_filter
+        - filter/optimization
+        - groupbyattrs
+        - metricstransform/kpis_post_filter
+        - metricstransform/cost
+        - memory_limiter
+        - batch
+      exporters: [otlp/newrelic, prometheus/internal, logging]
+
+  extensions: [memory_ballast, zpages, file_storage, file_config_provider]
+  
+  telemetry:
+    logs:
+      level: info
+      output_paths: ["/var/log/nrdot/collector.log"]
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888

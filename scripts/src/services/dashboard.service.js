@@ -542,4 +542,411 @@ export class DashboardService {
     
     return 0;
   }
+
+  // NRDOT v2: Process-aware dashboard validation
+  async validateProcessDashboard(dashboard, profile = 'Moderate') {
+    const profileConfig = this.profiles[profile];
+    const validation = {
+      valid: true,
+      profile,
+      errors: [],
+      warnings: [],
+      processMetrics: {
+        totalProcessQueries: 0,
+        estimatedProcesses: 0,
+        coverageIssues: []
+      },
+      costEstimate: 0
+    };
+
+    // Check widget count against profile
+    const totalWidgets = dashboard.pages.reduce((sum, page) => sum + page.widgets.length, 0);
+    if (totalWidgets > profileConfig.maxWidgetsPerDashboard) {
+      validation.warnings.push(
+        `Dashboard has ${totalWidgets} widgets, exceeding ${profile} profile limit of ${profileConfig.maxWidgetsPerDashboard}`
+      );
+    }
+
+    // Analyze each widget for process metrics
+    for (const page of dashboard.pages) {
+      for (const widget of page.widgets) {
+        if (widget.configuration?.nrql?.query) {
+          const query = widget.configuration.nrql.query;
+          
+          // Check if this is a process metrics query
+          if (query.includes('ProcessSample') || query.includes('processDisplayName')) {
+            validation.processMetrics.totalProcessQueries++;
+            
+            // Estimate process count
+            const processCount = await this.estimateProcessCount(query);
+            validation.processMetrics.estimatedProcesses += processCount;
+            
+            if (processCount > profileConfig.maxProcessesPerWidget) {
+              validation.warnings.push(
+                `Widget '${widget.title}' may query ${processCount} processes, exceeding ${profile} profile limit of ${profileConfig.maxProcessesPerWidget}`
+              );
+            }
+            
+            // Check for process intelligence patterns
+            const intelligence = await this.analyzeProcessQuery(query);
+            if (intelligence.missingCriticalProcesses.length > 0) {
+              validation.processMetrics.coverageIssues.push({
+                widget: widget.title,
+                missing: intelligence.missingCriticalProcesses
+              });
+            }
+          }
+          
+          // Calculate query complexity and cost
+          const complexity = calculateQueryComplexity(query);
+          validation.costEstimate += this.calculateQueryCost(query, complexity, profileConfig);
+        }
+      }
+    }
+
+    // Check for 95% coverage requirement
+    if (validation.processMetrics.coverageIssues.length > 0) {
+      validation.warnings.push(
+        `Dashboard may not meet 95% critical process coverage requirement. ${validation.processMetrics.coverageIssues.length} widgets have coverage gaps`
+      );
+    }
+
+    validation.valid = validation.errors.length === 0;
+    return validation;
+  }
+
+  // NRDOT v2: Analyze process query for intelligence patterns
+  async analyzeProcessQuery(query) {
+    const accountId = this.config.requireAccountId();
+    const intelligence = {
+      coversDatabase: false,
+      coversMessaging: false,
+      coversCompute: false,
+      coversWebServer: false,
+      missingCriticalProcesses: []
+    };
+
+    // Get process patterns from schema service
+    const processIntelligence = await this.schemaService.getProcessIntelligence(
+      accountId,
+      'ProcessSample',
+      '1 hour ago'
+    );
+
+    // Check coverage
+    const criticalCategories = ['database', 'messaging', 'compute', 'webServer'];
+    for (const category of criticalCategories) {
+      const patterns = processIntelligence.processCategories[category]?.patterns || [];
+      const covered = patterns.some(pattern => 
+        query.toLowerCase().includes(pattern.toLowerCase())
+      );
+      
+      if (!covered) {
+        intelligence.missingCriticalProcesses.push(category);
+      } else {
+        intelligence[`covers${category.charAt(0).toUpperCase() + category.slice(1)}`] = true;
+      }
+    }
+
+    return intelligence;
+  }
+
+  // NRDOT v2: Estimate process count from query
+  async estimateProcessCount(query) {
+    try {
+      // Extract WHERE conditions to estimate scope
+      const whereMatch = query.match(/WHERE\s+(.+?)(?:FACET|SINCE|LIMIT|$)/i);
+      if (!whereMatch) {
+        // No WHERE clause means all processes
+        return 1000; // Assume worst case
+      }
+
+      // Count restricting conditions
+      const conditions = whereMatch[1];
+      let estimate = 500; // Base estimate
+      
+      // Reduce estimate based on conditions
+      if (conditions.includes('processDisplayName')) estimate *= 0.1;
+      if (conditions.includes('commandLine')) estimate *= 0.05;
+      if (conditions.includes('hostname')) estimate *= 0.2;
+      if (conditions.includes('pid')) estimate = 1;
+      
+      return Math.ceil(estimate);
+    } catch (error) {
+      logger.debug(`Failed to estimate process count: ${error.message}`);
+      return 100; // Default estimate
+    }
+  }
+
+  // NRDOT v2: Calculate query cost
+  calculateQueryCost(query, complexity, profileConfig) {
+    const baseCost = this.costFactors.processMetrics.baseCostPerQuery;
+    const complexityMultiplier = this.costFactors.queryComplexity[complexity.level.toLowerCase()];
+    
+    // Estimate data points
+    const processCount = query.includes('ProcessSample') ? 100 : 10;
+    const attributeCount = (query.match(/,/g) || []).length + 1;
+    
+    const cost = baseCost * complexityMultiplier +
+                 (processCount * this.costFactors.processMetrics.costPerProcess) +
+                 (attributeCount * this.costFactors.processMetrics.costPerAttribute);
+    
+    // Apply refresh interval factor
+    const refreshMultiplier = 3600 / profileConfig.refreshInterval; // Queries per hour
+    
+    return cost * refreshMultiplier;
+  }
+
+  // NRDOT v2: Generate process-optimized dashboard
+  async generateProcessDashboard(options = {}) {
+    const {
+      profile = 'Moderate',
+      categories = ['database', 'messaging', 'compute', 'webServer'],
+      includeAnomalies = true,
+      includeTrends = true
+    } = options;
+
+    const profileConfig = this.profiles[profile];
+    const accountId = this.config.requireAccountId();
+
+    // Get process intelligence
+    const intelligence = await this.schemaService.getProcessIntelligence(
+      accountId,
+      'ProcessSample',
+      profileConfig.queryTimeRange
+    );
+
+    const dashboard = {
+      name: `Process Metrics Dashboard - ${profile} Profile`,
+      permissions: 'PUBLIC_READ_WRITE',
+      pages: []
+    };
+
+    // Overview page
+    const overviewPage = {
+      name: 'Process Overview',
+      widgets: []
+    };
+
+    // Add summary widget
+    overviewPage.widgets.push(this.createProcessSummaryWidget(profileConfig));
+
+    // Add category widgets
+    let column = 1;
+    let row = 1;
+    for (const category of categories) {
+      const widget = this.createProcessCategoryWidget(category, intelligence, profileConfig);
+      widget.layout = { column, row, width: 6, height: 3 };
+      overviewPage.widgets.push(widget);
+      
+      column += 6;
+      if (column > 7) {
+        column = 1;
+        row += 3;
+      }
+    }
+
+    dashboard.pages.push(overviewPage);
+
+    // Anomaly detection page
+    if (includeAnomalies) {
+      dashboard.pages.push(this.createAnomalyDetectionPage(profileConfig));
+    }
+
+    // Trend analysis page
+    if (includeTrends) {
+      dashboard.pages.push(this.createTrendAnalysisPage(profileConfig));
+    }
+
+    return dashboard;
+  }
+
+  // NRDOT v2: Create process summary widget
+  createProcessSummaryWidget(profileConfig) {
+    return {
+      title: 'Process Health Summary',
+      visualization: { id: 'viz.billboard' },
+      configuration: {
+        nrql: {
+          query: `SELECT count(*) as 'Total Processes', 
+                         filter(count(*), WHERE cpuPercent > 80) as 'High CPU', 
+                         filter(count(*), WHERE memoryResidentSizeBytes > 1e9) as 'High Memory'
+                  FROM ProcessSample 
+                  SINCE ${profileConfig.queryTimeRange} ago`
+        }
+      }
+    };
+  }
+
+  // NRDOT v2: Create process category widget
+  createProcessCategoryWidget(category, intelligence, profileConfig) {
+    const categoryInfo = intelligence.processCategories[category] || { patterns: [] };
+    const whereClause = categoryInfo.patterns
+      .map(p => `processDisplayName LIKE '%${p}%'`)
+      .join(' OR ');
+
+    return {
+      title: `${category.charAt(0).toUpperCase() + category.slice(1)} Processes`,
+      visualization: { id: 'viz.line' },
+      configuration: {
+        nrql: {
+          query: `SELECT average(cpuPercent) as 'CPU %', 
+                         average(memoryResidentSizeBytes) / 1e6 as 'Memory MB'
+                  FROM ProcessSample 
+                  WHERE ${whereClause || '1=1'}
+                  SINCE ${profileConfig.queryTimeRange} ago 
+                  TIMESERIES`
+        }
+      }
+    };
+  }
+
+  // NRDOT v2: Create anomaly detection page
+  createAnomalyDetectionPage(profileConfig) {
+    return {
+      name: 'Anomaly Detection',
+      widgets: [
+        {
+          title: 'CPU Anomalies',
+          visualization: { id: 'viz.line' },
+          configuration: {
+            nrql: {
+              query: `SELECT average(cpuPercent) as 'CPU', 
+                             stddev(cpuPercent) as 'StdDev'
+                      FROM ProcessSample 
+                      FACET processDisplayName 
+                      WHERE cpuPercent > average(cpuPercent) + 2 * stddev(cpuPercent)
+                      SINCE ${profileConfig.queryTimeRange} ago 
+                      TIMESERIES`
+            }
+          },
+          layout: { column: 1, row: 1, width: 12, height: 3 }
+        },
+        {
+          title: 'Memory Anomalies',
+          visualization: { id: 'viz.table' },
+          configuration: {
+            nrql: {
+              query: `SELECT processDisplayName, hostname, 
+                             average(memoryResidentSizeBytes) / 1e9 as 'Avg Memory GB',
+                             max(memoryResidentSizeBytes) / 1e9 as 'Max Memory GB'
+                      FROM ProcessSample 
+                      WHERE memoryResidentSizeBytes > percentile(memoryResidentSizeBytes, 95)
+                      SINCE ${profileConfig.queryTimeRange} ago 
+                      LIMIT 20`
+            }
+          },
+          layout: { column: 1, row: 4, width: 12, height: 3 }
+        }
+      ]
+    };
+  }
+
+  // NRDOT v2: Create trend analysis page
+  createTrendAnalysisPage(profileConfig) {
+    return {
+      name: 'Trend Analysis',
+      widgets: [
+        {
+          title: 'Process Count Trends',
+          visualization: { id: 'viz.area' },
+          configuration: {
+            nrql: {
+              query: `SELECT count(*) as 'Process Count'
+                      FROM ProcessSample 
+                      FACET cases(
+                        WHERE processDisplayName LIKE '%mysql%' OR processDisplayName LIKE '%postgres%' as 'Database',
+                        WHERE processDisplayName LIKE '%kafka%' OR processDisplayName LIKE '%rabbitmq%' as 'Messaging',
+                        WHERE processDisplayName LIKE '%nginx%' OR processDisplayName LIKE '%apache%' as 'Web Server'
+                      )
+                      SINCE ${profileConfig.queryTimeRange} ago 
+                      TIMESERIES`
+            }
+          },
+          layout: { column: 1, row: 1, width: 12, height: 3 }
+        },
+        {
+          title: 'Resource Utilization Trends',
+          visualization: { id: 'viz.line' },
+          configuration: {
+            nrql: {
+              query: `SELECT average(cpuPercent) as 'Avg CPU %',
+                             percentile(cpuPercent, 95) as 'P95 CPU %',
+                             average(memoryResidentSizeBytes) / 1e9 as 'Avg Memory GB'
+                      FROM ProcessSample 
+                      SINCE ${profileConfig.queryTimeRange} ago 
+                      TIMESERIES`
+            }
+          },
+          layout: { column: 1, row: 4, width: 12, height: 3 }
+        }
+      ]
+    };
+  }
+
+  // NRDOT v2: Optimize existing dashboard for profile
+  async optimizeDashboardForProfile(dashboard, targetProfile = 'Moderate') {
+    const profileConfig = this.profiles[targetProfile];
+    const optimized = JSON.parse(JSON.stringify(dashboard)); // Deep clone
+    const optimizationLog = [];
+
+    // Optimize each widget
+    for (const page of optimized.pages) {
+      const widgetsToRemove = [];
+      
+      for (let i = 0; i < page.widgets.length; i++) {
+        const widget = page.widgets[i];
+        
+        if (widget.configuration?.nrql?.query) {
+          const query = widget.configuration.nrql.query;
+          const complexity = calculateQueryComplexity(query);
+          
+          // Remove high complexity queries in conservative profiles
+          if (profileConfig.complexity === 'low' && complexity.level === 'High') {
+            widgetsToRemove.push(i);
+            optimizationLog.push(`Removed high-complexity widget: ${widget.title}`);
+            continue;
+          }
+          
+          // Optimize time windows
+          if (!query.includes('SINCE')) {
+            widget.configuration.nrql.query += ` SINCE ${profileConfig.queryTimeRange} ago`;
+            optimizationLog.push(`Added time window to widget: ${widget.title}`);
+          }
+          
+          // Add LIMIT for process queries
+          if (query.includes('ProcessSample') && !query.includes('LIMIT')) {
+            const limit = Math.min(profileConfig.maxProcessesPerWidget, 100);
+            widget.configuration.nrql.query += ` LIMIT ${limit}`;
+            optimizationLog.push(`Added LIMIT ${limit} to widget: ${widget.title}`);
+          }
+        }
+      }
+      
+      // Remove widgets in reverse order to maintain indices
+      for (let i = widgetsToRemove.length - 1; i >= 0; i--) {
+        page.widgets.splice(widgetsToRemove[i], 1);
+      }
+    }
+
+    // Trim to profile widget limit
+    let totalWidgets = 0;
+    for (const page of optimized.pages) {
+      for (let i = page.widgets.length - 1; i >= 0; i--) {
+        if (totalWidgets >= profileConfig.maxWidgetsPerDashboard) {
+          page.widgets.splice(i, 1);
+          optimizationLog.push(`Removed widget to meet profile limit`);
+        } else {
+          totalWidgets++;
+        }
+      }
+    }
+
+    return {
+      dashboard: optimized,
+      optimizationLog,
+      profile: targetProfile,
+      estimatedCostReduction: optimizationLog.length * 10 // Rough estimate: 10% per optimization
+    };
+  }
 }

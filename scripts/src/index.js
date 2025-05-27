@@ -5,7 +5,6 @@ export { Config } from './core/config.js';
 export { SchemaService } from './services/schema.service.js';
 export { NRQLService } from './services/nrql.service.js';
 export { DashboardService } from './services/dashboard.service.js';
-export { AlertService } from './services/alert.service.js';
 export { EntityService } from './services/entity.service.js';
 export { IngestService } from './services/ingest.service.js';
 
