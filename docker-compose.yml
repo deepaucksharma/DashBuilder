@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  dashbuilder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dashbuilder-app
+    restart: unless-stopped
+    environment:
+      # New Relic API Configuration
+      - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_ACCOUNT_ID=${NEW_RELIC_ACCOUNT_ID}
+      - NEW_RELIC_REGION=${NEW_RELIC_REGION:-US}
+      - NEW_RELIC_INGEST_KEY=${NEW_RELIC_INGEST_KEY}
+      # NRDOT v2 Configuration
+      - NRDOT_PROFILE=${NRDOT_PROFILE:-Conservative}
+      - NRDOT_TARGET_COVERAGE=${NRDOT_TARGET_COVERAGE:-95}
+      - NRDOT_COST_REDUCTION_TARGET=${NRDOT_COST_REDUCTION_TARGET:-40}
+      # Optional Configuration
+      - NR_GUARDIAN_CACHE_TTL=${NR_GUARDIAN_CACHE_TTL:-3600}
+      - NR_GUARDIAN_RATE_LIMIT_MAX=${NR_GUARDIAN_RATE_LIMIT_MAX:-25}
+      - NR_GUARDIAN_LOG_LEVEL=${NR_GUARDIAN_LOG_LEVEL:-info}
+      - NR_GUARDIAN_ENABLE_CACHE=${NR_GUARDIAN_ENABLE_CACHE:-true}
+      - NODE_ENV=production
+    volumes:
+      # Mount config files if needed
+      - ./configs:/app/configs:ro
+      - ./examples:/app/examples:ro
+      # Mount for output/logs
+      - ./docker-output:/app/output
+    stdin_open: true
+    tty: true
+    command: ["bash"]
+
+  # Optional: Add a separate service for running specific commands
+  dashbuilder-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dashbuilder-cli
+    environment:
+      # Same environment variables as above
+      - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_ACCOUNT_ID=${NEW_RELIC_ACCOUNT_ID}
+      - NEW_RELIC_REGION=${NEW_RELIC_REGION:-US}
+      - NEW_RELIC_INGEST_KEY=${NEW_RELIC_INGEST_KEY}
+      - NRDOT_PROFILE=${NRDOT_PROFILE:-Conservative}
+      - NRDOT_TARGET_COVERAGE=${NRDOT_TARGET_COVERAGE:-95}
+      - NRDOT_COST_REDUCTION_TARGET=${NRDOT_COST_REDUCTION_TARGET:-40}
+      - NR_GUARDIAN_CACHE_TTL=${NR_GUARDIAN_CACHE_TTL:-3600}
+      - NR_GUARDIAN_RATE_LIMIT_MAX=${NR_GUARDIAN_RATE_LIMIT_MAX:-25}
+      - NR_GUARDIAN_LOG_LEVEL=${NR_GUARDIAN_LOG_LEVEL:-info}
+      - NR_GUARDIAN_ENABLE_CACHE=${NR_GUARDIAN_ENABLE_CACHE:-true}
+      - NODE_ENV=production
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./examples:/app/examples:ro
+      - ./docker-output:/app/output
+    profiles:
+      - cli
+    entrypoint: ["npm", "run"]
+    command: ["cli", "--"]

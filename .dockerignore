@@ -1,0 +1,47 @@
+# Exclude automation directory completely
+automation/
+
+# Node modules (will be installed fresh in container)
+node_modules/
+*/node_modules/
+*/*/node_modules/
+
+# Git files
+.git/
+.gitignore
+
+# Environment files (should be mounted or set at runtime)
+.env
+*/.env
+
+# Test coverage
+coverage/
+*/coverage/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build outputs
+dist/
+build/
+*.pid
+*.seed
+*.pid.lock
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+.cache/
