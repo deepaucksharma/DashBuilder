@@ -1,0 +1,8 @@
+{
+  "schemaType": "NERDPACK",
+  "id": "nrdot-host-process-optimization",
+  "displayName": "NRDOT • Host Process Optimization",
+  "description": "Turn raw host-process telemetry into cost-efficient insights with 70%+ savings",
+  "version": "2.0.0",
+  "icon": "icon.png"
+}
