@@ -8,7 +8,7 @@ node_modules/
 
 # Git files
 .git/
-.gitignore
+# .gitignore - Keep this file
 
 # Environment files (should be mounted or set at runtime)
 .env

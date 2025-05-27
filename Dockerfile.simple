@@ -27,7 +27,7 @@ RUN npm install --legacy-peer-deps
 # Go back to main directory
 WORKDIR /app
 
-# Copy all project files except automation
+# Copy all project files except automation and nrdot-nr1-app node_modules
 COPY .gitignore ./
 COPY CLAUDE.md ./
 COPY README.md ./
@@ -46,8 +46,8 @@ COPY scripts ./scripts
 # Make scripts executable
 RUN chmod +x setup.sh && \
     find scripts -name "*.sh" -type f -exec chmod +x {} \;
-# Create startup script
-RUN echo '#!/bin/bash' > /app/start.sh && \
+
+# Create startup scriptRUN echo '#!/bin/bash' > /app/start.sh && \
     echo 'echo "===================================="' >> /app/start.sh && \
     echo 'echo " DashBuilder Container Started"' >> /app/start.sh && \
     echo 'echo "===================================="' >> /app/start.sh && \
@@ -62,12 +62,24 @@ RUN echo '#!/bin/bash' > /app/start.sh && \
     echo 'echo "  npm run cli -- dashboard list"' >> /app/start.sh && \
     echo 'echo "  npm run cli -- dashboard create ./examples/sample-dashboard.json"' >> /app/start.sh && \
     echo 'echo ""' >> /app/start.sh && \
+    echo 'echo "NOTE: The nrdot-nr1-app requires New Relic CLI tools which are not included."' >> /app/start.sh && \
+    echo 'echo "      Most dashboard operations will work without it."' >> /app/start.sh && \
+    echo 'echo ""' >> /app/start.sh && \
     echo 'exec "$@"' >> /app/start.sh && \
     chmod +x /app/start.sh
+
+# Create a health check script
+RUN echo '#!/bin/bash' > /app/healthcheck.sh && \
+    echo 'cd /app/scripts && npm run cli -- schema list-event-types --limit 1' >> /app/healthcheck.sh && \
+    chmod +x /app/healthcheck.sh
 
 # Set environment variables
 ENV NODE_ENV=production
 ENV NR_GUARDIAN_LOG_LEVEL=info
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD /app/healthcheck.sh || exit 1
 
 # Set the startup script as entrypoint
 ENTRYPOINT ["/app/start.sh"]
