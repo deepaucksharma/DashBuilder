@@ -1,0 +1,29 @@
+# Patches for optimization.yaml
+
+# 1. Fix hostname fallback for Windows
+yq eval -i '.state.host_id = "${env:HOSTNAME:-${env:COMPUTERNAME}}"' /etc/nrdot-collector-host/optimization.yaml
+
+# 2. Add flattened noise patterns list at root level
+yq eval -i '.noise_patterns = [
+  "^(kworker|ksoftirqd|migration|rcu_)",
+  "^(ps|ls|cat|grep|awk|sed|find)$",
+  "^(SearchIndexer|WmiPrvSE|TrustedInstaller)",
+  "^(tasklist|findstr|cmd)$"
+]' /etc/nrdot-collector-host/optimization.yaml
+
+# 3. Fix CPU thresholds to use seconds instead of percent
+# Conservative: 5% of 1 CPU = 0.05 seconds per collection interval
+yq eval -i '.profiles.conservative.thresholds.cpu_threshold_seconds = 0.05' /etc/nrdot-collector-host/optimization.yaml
+yq eval -i 'del(.profiles.conservative.thresholds.cpu_threshold_percent)' /etc/nrdot-collector-host/optimization.yaml
+
+# Balanced: 10% = 0.1 seconds
+yq eval -i '.profiles.balanced.thresholds.cpu_threshold_seconds = 0.1' /etc/nrdot-collector-host/optimization.yaml
+yq eval -i 'del(.profiles.balanced.thresholds.cpu_threshold_percent)' /etc/nrdot-collector-host/optimization.yaml
+
+# Aggressive: 20% = 0.2 seconds  
+yq eval -i '.profiles.aggressive.thresholds.cpu_threshold_seconds = 0.2' /etc/nrdot-collector-host/optimization.yaml
+yq eval -i 'del(.profiles.aggressive.thresholds.cpu_threshold_percent)' /etc/nrdot-collector-host/optimization.yaml
+
+# Emergency: 30% = 0.3 seconds
+yq eval -i '.profiles.emergency.thresholds.cpu_threshold_seconds = 0.3' /etc/nrdot-collector-host/optimization.yaml
+yq eval -i 'del(.profiles.emergency.thresholds.cpu_threshold_percent)' /etc/nrdot-collector-host/optimization.yaml

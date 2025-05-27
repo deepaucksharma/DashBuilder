@@ -1,0 +1,81 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+**/.env
+
+# Configuration
+.dashbuilder/
+config/*.json
+!config/*.example.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Reports and exports
+reports/
+exports/
+backups/
+monitoring/
+alerts/
+
+# Screenshots and media
+screenshots/
+*.png
+*.jpg
+
+# Temporary files
+temp/
+tmp/
+temp-*.json
+.tmp/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build outputs
+dist/
+build/
+*.tgz
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Automation specific
+automation/config/*.json
+automation/screenshots/
+automation/reports/
+automation/exports/
+
+# NR1 app specific
+nrdot-nr1-app/dist/
+nrdot-nr1-app/tmp/
+
+# Cache
+.cache/
+.nr-cli.json
+
+# Credentials
+credentials.json
+api-keys.json
+dashbuilder-keys.json

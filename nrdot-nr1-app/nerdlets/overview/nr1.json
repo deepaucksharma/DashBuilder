@@ -1,0 +1,6 @@
+{
+  "schemaType": "NERDLET",
+  "id": "overview",
+  "displayName": "Overview",
+  "description": "Executive dashboard for host process optimization"
+}

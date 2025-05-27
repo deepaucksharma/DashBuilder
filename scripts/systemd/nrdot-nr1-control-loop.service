@@ -1,0 +1,56 @@
+[Unit]
+Description=NRDOT NR1 UI-Driven Control Loop
+Documentation=https://docs.newrelic.com/nrdot
+After=network-online.target nrdot-collector-host.service
+Wants=network-online.target
+Requires=nrdot-collector-host.service
+
+[Service]
+Type=simple
+User=nrdot
+Group=nrdot
+WorkingDirectory=/opt/nrdot
+
+# Environment configuration
+Environment="LOG_LEVEL=info"
+Environment="POLL_INTERVAL=30"
+Environment="OPTIMIZATION_FILE=/etc/nrdot-collector-host/optimization.yaml"
+Environment="ENV_MANAGER=/usr/local/bin/manage-collector-env.sh"
+EnvironmentFile=-/etc/nrdot/nr1-control-loop.env
+
+# Main script execution
+ExecStartPre=/bin/bash -c 'test -f ${OPTIMIZATION_FILE} || (echo "Optimization file not found" && exit 1)'
+ExecStartPre=/bin/bash -c 'test -n "${NR_API_KEY}" || (echo "NR_API_KEY not set" && exit 1)'
+ExecStartPre=/bin/bash -c 'test -n "${NR_ACCOUNT_ID}" || (echo "NR_ACCOUNT_ID not set" && exit 1)'
+ExecStart=/opt/nrdot/nrdot-nr1-control-loop.sh
+
+# Restart configuration
+Restart=on-failure
+RestartSec=30
+StartLimitInterval=600
+StartLimitBurst=5
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/nrdot-collector-host /var/lib/nrdot /var/log/nrdot
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nrdot-nr1-control-loop
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,380 @@
+#!/bin/bash
+# nrdot-plus-ctl - Control utility for NRDOT-Plus
+
+set -euo pipefail
+
+# Constants
+readonly SCRIPT_NAME=$(basename "$0")
+readonly CONFIG_FILE="/etc/nrdot-plus/optimization.yaml"
+readonly METRICS_URL="http://localhost:8888/metrics"
+readonly SERVICE_NAME="nrdot-plus"
+readonly CONTROL_LOOP_SERVICE="nrdot-plus-control-loop"
+
+# Colors for output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly NC='\033[0m' # No Color
+
+# Print colored output
+print_color() {
+    local color=$1
+    shift
+    echo -e "${color}$*${NC}"
+}
+
+# Get current profile
+get_profile() {
+    yq eval '.state.active_profile' "$CONFIG_FILE" 2>/dev/null || echo "unknown"
+}
+
+# Get metric value
+get_metric() {
+    local metric=$1
+    local prom_metric=${metric//./_}
+    curl -s "$METRICS_URL" 2>/dev/null | \
+        awk -v metric="^${prom_metric}" '$0 ~ metric && $0 !~ /^#/ {print $2}' | \
+        head -1 || echo "N/A"
+}
+
+# Status command
+cmd_status() {
+    echo "NRDOT-Plus Status"
+    echo "================="
+    echo
+    
+    # Service status
+    print_color "$BLUE" "Services:"
+    if systemctl is-active --quiet "$SERVICE_NAME"; then
+        print_color "$GREEN" "  ✓ Collector: Running"
+    else
+        print_color "$RED" "  ✗ Collector: Stopped"
+    fi
+    
+    if systemctl is-active --quiet "$CONTROL_LOOP_SERVICE"; then
+        print_color "$GREEN" "  ✓ Control Loop: Running"
+    else
+        print_color "$YELLOW" "  ⚠ Control Loop: Stopped"
+    fi
+    echo
+    
+    # Profile info
+    print_color "$BLUE" "Optimization:"
+    echo "  Profile: $(get_profile)"
+    local last_updated=$(yq eval '.state.last_updated' "$CONFIG_FILE" 2>/dev/null || echo "unknown")
+    echo "  Last Updated: $last_updated"
+    echo
+    
+    # Metrics
+    print_color "$BLUE" "Metrics:"
+    local total=$(get_metric "nrdot_process_series_total")
+    local kept=$(get_metric "nrdot_process_series_kept")
+    local coverage=$(get_metric "nrdot_process_coverage_critical")
+    local cost=$(get_metric "nrdot_estimated_cost_per_hour")
+    
+    if [[ "$total" != "N/A" && "$kept" != "N/A" ]]; then
+        local reduction=$(( (${total%.*} - ${kept%.*}) * 100 / ${total%.*} ))
+        echo "  Series: $kept / $total (${reduction}% reduction)"
+    else
+        echo "  Series: N/A"
+    fi
+    
+    echo "  Coverage: ${coverage}"
+    echo "  Est. Cost: \$${cost}/hour"
+    echo
+    
+    # Configuration
+    print_color "$BLUE" "Configuration:"
+    echo "  Config Dir: /etc/nrdot-plus"
+    echo "  Data Dir: /var/lib/nrdot-plus"
+    echo "  Log Dir: /var/log/nrdot-plus"
+}
+
+# Profile command
+cmd_profile() {
+    local action=${1:-show}
+    
+    case $action in
+        show|get)
+            echo "Current profile: $(get_profile)"
+            ;;
+        set)
+            local new_profile=${2:-}
+            if [[ -z "$new_profile" ]]; then
+                echo "Error: Profile name required"
+                echo "Usage: $SCRIPT_NAME profile set <conservative|balanced|aggressive|emergency>"
+                exit 1
+            fi
+            
+            # Validate profile exists
+            if ! yq eval ".profiles.$new_profile" "$CONFIG_FILE" &>/dev/null; then
+                echo "Error: Unknown profile '$new_profile'"
+                exit 1
+            fi
+            
+            # Update profile
+            yq eval -i ".state.active_profile = \"$new_profile\"" "$CONFIG_FILE"
+            yq eval -i ".state.last_updated = \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"" "$CONFIG_FILE"
+            yq eval -i ".state.updated_by = \"manual\"" "$CONFIG_FILE"
+            
+            # Reload service
+            systemctl reload "$SERVICE_NAME"
+            
+            print_color "$GREEN" "✓ Profile changed to: $new_profile"
+            ;;
+        list)
+            echo "Available profiles:"
+            yq eval '.profiles | keys | .[]' "$CONFIG_FILE" 2>/dev/null | sed 's/^/  - /'
+            ;;
+        *)
+            echo "Usage: $SCRIPT_NAME profile [show|set <profile>|list]"
+            exit 1
+            ;;
+    esac
+}
+
+# Metrics command
+cmd_metrics() {
+    local format=${1:-human}
+    
+    case $format in
+        human)
+            cmd_status
+            ;;
+        json)
+            cat <<EOF
+{
+  "profile": "$(get_profile)",
+  "series_total": $(get_metric "nrdot_process_series_total"),
+  "series_kept": $(get_metric "nrdot_process_series_kept"),
+  "coverage": $(get_metric "nrdot_process_coverage_critical"),
+  "cost_per_hour": $(get_metric "nrdot_estimated_cost_per_hour")
+}
+EOF
+            ;;
+        prometheus)
+            curl -s "$METRICS_URL" | grep "^nrdot_"
+            ;;
+        *)
+            echo "Usage: $SCRIPT_NAME metrics [human|json|prometheus]"
+            exit 1
+            ;;
+    esac
+}
+
+# Control loop command
+cmd_control() {
+    local action=${1:-status}
+    
+    case $action in
+        status)
+            if systemctl is-active --quiet "$CONTROL_LOOP_SERVICE"; then
+                print_color "$GREEN" "✓ Control loop is running"
+                echo
+                echo "Recent changes:"
+                tail -5 /var/lib/nrdot-plus/state/profile_changes.jsonl 2>/dev/null | \
+                    jq -r '"  \(.timestamp): \(.from) -> \(.to) (\(.reason))"' 2>/dev/null || \
+                    echo "  No recent changes"
+            else
+                print_color "$YELLOW" "⚠ Control loop is stopped"
+            fi
+            ;;
+        start)
+            systemctl start "$CONTROL_LOOP_SERVICE"
+            print_color "$GREEN" "✓ Control loop started"
+            ;;
+        stop)
+            systemctl stop "$CONTROL_LOOP_SERVICE"
+            print_color "$YELLOW" "⚠ Control loop stopped"
+            ;;
+        restart)
+            systemctl restart "$CONTROL_LOOP_SERVICE"
+            print_color "$GREEN" "✓ Control loop restarted"
+            ;;
+        enable)
+            systemctl enable "$CONTROL_LOOP_SERVICE"
+            print_color "$GREEN" "✓ Control loop enabled"
+            ;;
+        disable)
+            systemctl disable "$CONTROL_LOOP_SERVICE"
+            print_color "$YELLOW" "⚠ Control loop disabled"
+            ;;
+        force-check)
+            systemctl kill -s USR1 "$CONTROL_LOOP_SERVICE"
+            print_color "$GREEN" "✓ Forced control loop re-evaluation"
+            ;;
+        *)
+            echo "Usage: $SCRIPT_NAME control [status|start|stop|restart|enable|disable|force-check]"
+            exit 1
+            ;;
+    esac
+}
+
+# Logs command
+cmd_logs() {
+    local service=${1:-collector}
+    local follow=${2:-}
+    
+    local follow_flag=""
+    if [[ "$follow" == "-f" || "$follow" == "--follow" ]]; then
+        follow_flag="-f"
+    fi
+    
+    case $service in
+        collector)
+            journalctl -u "$SERVICE_NAME" -n 100 $follow_flag
+            ;;
+        control|control-loop)
+            journalctl -u "$CONTROL_LOOP_SERVICE" -n 100 $follow_flag
+            ;;
+        all)
+            journalctl -u "$SERVICE_NAME" -u "$CONTROL_LOOP_SERVICE" -n 100 $follow_flag
+            ;;
+        *)
+            echo "Usage: $SCRIPT_NAME logs [collector|control|all] [-f]"
+            exit 1
+            ;;
+    esac
+}
+
+# Config command
+cmd_config() {
+    local action=${1:-show}
+    
+    case $action in
+        show)
+            cat "$CONFIG_FILE"
+            ;;
+        edit)
+            ${EDITOR:-vi} "$CONFIG_FILE"
+            # Validate after edit
+            if yq eval '.' "$CONFIG_FILE" &>/dev/null; then
+                print_color "$GREEN" "✓ Configuration valid"
+                systemctl reload "$SERVICE_NAME"
+            else
+                print_color "$RED" "✗ Configuration invalid!"
+            fi
+            ;;
+        validate)
+            if yq eval '.' "$CONFIG_FILE" &>/dev/null; then
+                print_color "$GREEN" "✓ Configuration is valid"
+            else
+                print_color "$RED" "✗ Configuration is invalid"
+                exit 1
+            fi
+            ;;
+        reload)
+            systemctl reload "$SERVICE_NAME"
+            print_color "$GREEN" "✓ Configuration reloaded"
+            ;;
+        *)
+            echo "Usage: $SCRIPT_NAME config [show|edit|validate|reload]"
+            exit 1
+            ;;
+    esac
+}
+
+# Version command
+cmd_version() {
+    echo "NRDOT-Plus version 2.0.0"
+    echo "Distribution: plus"
+    echo
+    echo "Components:"
+    echo "  - OpenTelemetry Collector: $(otelcol --version 2>/dev/null | head -1 || echo 'N/A')"
+    echo "  - Process Optimization: 2.0.0"
+    echo "  - Control Loop: 2.0.0"
+}
+
+# Help command
+cmd_help() {
+    cat <<EOF
+NRDOT-Plus Control Utility
+
+Usage: $SCRIPT_NAME <command> [options]
+
+Commands:
+  status              Show current status and metrics
+  profile             Manage optimization profiles
+    show              Show current profile
+    set <name>        Change active profile
+    list              List available profiles
+  metrics             Display metrics
+    human             Human-readable format (default)
+    json              JSON format
+    prometheus        Raw Prometheus format
+  control             Manage control loop
+    status            Show control loop status
+    start             Start control loop
+    stop              Stop control loop
+    restart           Restart control loop
+    enable            Enable control loop at boot
+    disable           Disable control loop at boot
+    force-check       Force immediate re-evaluation
+  logs                View service logs
+    collector         Show collector logs
+    control           Show control loop logs
+    all               Show all logs
+    -f                Follow log output
+  config              Manage configuration
+    show              Display current configuration
+    edit              Edit configuration
+    validate          Validate configuration syntax
+    reload            Reload configuration
+  version             Show version information
+  help                Show this help message
+
+Examples:
+  # Check current status
+  $SCRIPT_NAME status
+  
+  # Change to aggressive profile
+  $SCRIPT_NAME profile set aggressive
+  
+  # View real-time logs
+  $SCRIPT_NAME logs all -f
+  
+  # Force control loop check
+  $SCRIPT_NAME control force-check
+
+For more information, visit: https://docs.newrelic.com/nrdot-plus
+EOF
+}
+
+# Main command dispatcher
+case ${1:-help} in
+    status)
+        cmd_status
+        ;;
+    profile)
+        shift
+        cmd_profile "$@"
+        ;;
+    metrics)
+        shift
+        cmd_metrics "$@"
+        ;;
+    control)
+        shift
+        cmd_control "$@"
+        ;;
+    logs)
+        shift
+        cmd_logs "$@"
+        ;;
+    config)
+        shift
+        cmd_config "$@"
+        ;;
+    version)
+        cmd_version
+        ;;
+    help|--help|-h)
+        cmd_help
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo "Run '$SCRIPT_NAME help' for usage"
+        exit 1
+        ;;
+esac

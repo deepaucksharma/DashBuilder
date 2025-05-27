@@ -1,0 +1,43 @@
+{
+  "name": "dashbuilder",
+  "version": "1.0.0",
+  "description": "Complete New Relic Dashboard Builder Solution",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "node orchestrator/setup.js",
+    "deploy": "node orchestrator/deploy.js",
+    "validate": "node orchestrator/validate.js",
+    "monitor": "node orchestrator/monitor.js",
+    "workflow:create-dashboard": "node orchestrator/workflows/create-dashboard.js",
+    "workflow:migrate-dashboard": "node orchestrator/workflows/migrate-dashboard.js",
+    "workflow:optimize-dashboard": "node orchestrator/workflows/optimize-dashboard.js",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "cd scripts && npm test",
+    "test:integration": "node orchestrator/test/integration.js",
+    "cli": "cd scripts && npm run cli",
+    "automation": "cd automation && npm run",
+    "nr1": "cd nrdot-nr1-app && npm run",
+    "install:all": "npm install && cd scripts && npm install && cd ../automation && npm install && cd ../nrdot-nr1-app && npm install",
+    "clean": "rm -rf node_modules scripts/node_modules automation/node_modules nrdot-nr1-app/node_modules"
+  },
+  "workspaces": [
+    "scripts",
+    "automation",
+    "nrdot-nr1-app"
+  ],
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1",
+    "inquirer": "^9.2.12",
+    "ora": "^7.0.1",
+    "winston": "^3.11.0",
+    "node-cron": "^3.0.3",
+    "p-queue": "^7.4.1",
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

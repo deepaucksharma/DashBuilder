@@ -1,0 +1,44 @@
+# Default environment for NRDOT-Plus
+# This file should be installed as /etc/default/nrdot-plus
+
+# Required: New Relic License Key
+#NEW_RELIC_LICENSE_KEY="YOUR_LICENSE_KEY_HERE"
+
+# OTLP endpoint (default: New Relic US datacenter)
+OTEL_EXPORTER_OTLP_ENDPOINT="https://otlp.nr-data.net"
+
+# For EU datacenter, use:
+#OTEL_EXPORTER_OTLP_ENDPOINT="https://otlp.eu01.nr-data.net"
+
+# Optimization settings
+NRDOT_PROFILE="balanced"
+NRDOT_TARGET_SERIES="5000"
+NRDOT_MAX_SERIES="10000"
+NRDOT_MIN_COVERAGE="0.95"
+NRDOT_MAX_COST_HOUR="0.10"
+NRDOT_CHECK_INTERVAL="30"
+
+# Cost model
+NRDOT_COST_CURRENCY="USD"
+NRDOT_COST_PER_MILLION="0.25"
+NRDOT_BILLING_MODEL="datapoints"
+
+# Control loop
+NRDOT_ENABLE_CONTROL_LOOP="true"
+
+# Experiment ring (0-7, automatically assigned by installer)
+NRDOT_RING="0"
+
+# Webhook URL for notifications (optional)
+#NRDOT_WEBHOOK_URL="https://your-webhook-endpoint.com/nrdot"
+
+# Logging
+OTEL_LOG_LEVEL="info"
+
+# Advanced tuning
+GOGC="80"
+GOMEMLIMIT="256MiB"
+
+# Proxy settings (if needed)
+#https_proxy="http://proxy.company.com:8080"
+#no_proxy="localhost,127.0.0.1"

@@ -1,0 +1,6 @@
+{
+  "schemaType": "NERDLET",
+  "id": "console",
+  "displayName": "Console",
+  "description": "Control center for optimization management"
+}

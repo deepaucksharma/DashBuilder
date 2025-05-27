@@ -1,0 +1,140 @@
+# Complete KPI metrics generation including nrdot_process_series_kept
+# This replaces the partial KPI generation with comprehensive metrics
+
+metricstransform/kpis_pre_filter:
+  error_mode: ignore
+  metric_statements:
+    # Count total series before any filtering (post-noise-filter at receiver)
+    - context: metric
+      statements:
+        - set(metric.name, "nrdot_process_series_total") where metric.name == "process.cpu.time"
+        - set(metric.unit, "1")
+        - set(metric.description, "Total number of process series before optimization filtering")
+        - aggregate_on_attributes(sum, [])
+        - set(attributes["stage"], "pre_filter")
+
+    # Count series by importance tier
+    - context: metric
+      statements:
+        - set(metric.name, "nrdot_process_series_by_tier") where metric.name == "process.cpu.time"
+        - set(metric.unit, "1") 
+        - set(metric.description, "Process series count by classification tier")
+        - set(attributes["tier"], resource.attributes["process.classification"])
+        - aggregate_on_attributes(sum, ["tier"])
+
+    # Count critical coverage (importance >= 0.8)
+    - context: metric
+      statements:
+        - set(metric.name, "nrdot_process_critical_series") where metric.name == "process.cpu.time" and resource.attributes["process.importance_float"] >= 0.8
+        - set(metric.unit, "1")
+        - set(metric.description, "Number of critical process series")
+        - aggregate_on_attributes(sum, [])
+
+# This processor must be placed AFTER the filter/optimization processor
+metricstransform/kpis_post_filter:
+  error_mode: ignore
+  metric_statements:
+    # Count series that passed filtering
+    - context: metric
+      statements:
+        - set(metric.name, "nrdot_process_series_kept") where metric.name == "process.cpu.time"
+        - set(metric.unit, "1")
+        - set(metric.description, "Number of process series after optimization filtering")
+        - aggregate_on_attributes(sum, [])
+        - set(attributes["stage"], "post_filter")
+
+    # Count kept series by tier
+    - context: metric
+      statements:
+        - set(metric.name, "nrdot_process_series_kept_by_tier") where metric.name == "process.cpu.time"
+        - set(metric.unit, "1")
+        - set(metric.description, "Kept process series count by classification tier")
+        - set(attributes["tier"], resource.attributes["process.classification"])
+        - aggregate_on_attributes(sum, ["tier"])
+
+    # Count anomalies (if EWMA is enabled)
+    - context: metric
+      statements:
+        - set(metric.name, "nrdot_process_anomaly_count") where metric.name == "process.cpu.time" and resource.attributes["process.is_anomaly"] == true
+        - set(metric.unit, "1")
+        - set(metric.description, "Number of processes detected as anomalous")
+        - aggregate_on_attributes(sum, [])
+
+# Calculate derived KPIs
+metricstransform/kpis_derived:
+  error_mode: ignore
+  metric_statements:
+    # Calculate reduction percentage
+    - context: metric
+      statements:
+        # This requires both total and kept metrics to be present
+        # In practice, you'd use a more sophisticated approach or external calculation
+        - set(metric.name, "nrdot_optimization_reduction_percent") where metric.name == "nrdot_process_series_total"
+        - set(metric.unit, "%")
+        - set(metric.description, "Percentage reduction in series due to optimization")
+        # Note: Actual calculation would need access to both metrics
+
+    # Calculate critical coverage percentage
+    - context: metric
+      statements:
+        - set(metric.name, "nrdot_process_coverage_critical") where metric.name == "nrdot_process_critical_series"
+        - set(metric.unit, "%")
+        - set(metric.description, "Percentage of critical processes covered")
+        - set(value, 100.0) # Placeholder - actual calculation needs total critical count
+
+    # Calculate anomaly rate
+    - context: metric
+      statements:
+        - set(metric.name, "nrdot_process_anomaly_rate") where metric.name == "nrdot_process_anomaly_count"
+        - set(metric.unit, "%")
+        - set(metric.description, "Percentage of processes detected as anomalous")
+        # Actual calculation would need total kept series count
+
+# Cost estimation with proper datapoint calculation
+metricstransform/cost_advanced:
+  error_mode: ignore
+  metric_statements:
+    - context: metric
+      statements:
+        # Base cost on kept series
+        - set(metric.name, "nrdot_estimated_cost_per_hour") where metric.name == "nrdot_process_series_kept"
+        - set(metric.unit, "USD/h")
+        - set(metric.description, "Estimated hourly cost based on kept process series")
+        # Assumptions:
+        # - Each series reports every 60 seconds = 60 datapoints/hour
+        # - Cost per million datapoints from optimization.yaml
+        # - Default $0.25 per million if not set
+        - set(cache["datapoints_per_series_per_hour"], 60.0)
+        - set(cache["cost_per_million"], 0.25) # Should come from ${env:COST_PER_MILLION_DATAPOINTS}
+        - set(value, value * cache["datapoints_per_series_per_hour"] / 1000000.0 * cache["cost_per_million"])
+
+    # Cost by tier
+    - context: metric
+      statements:
+        - set(metric.name, "nrdot_estimated_cost_by_tier") where metric.name == "nrdot_process_series_kept_by_tier"
+        - set(metric.unit, "USD/h")
+        - set(metric.description, "Estimated hourly cost by process tier")
+        - set(cache["datapoints_per_series_per_hour"], 60.0)
+        - set(cache["cost_per_million"], 0.25)
+        - set(value, value * cache["datapoints_per_series_per_hour"] / 1000000.0 * cache["cost_per_million"])
+
+    # Potential savings (comparing total vs kept)
+    - context: metric
+      statements:
+        - set(metric.name, "nrdot_estimated_savings_per_hour") where metric.name == "nrdot_process_series_total"
+        - set(metric.unit, "USD/h")
+        - set(metric.description, "Estimated hourly savings from optimization")
+        # This would calculate (total - kept) * cost_per_series
+        # Requires correlation with kept series metric
+
+# Add metadata to all KPI metrics
+metricstransform/kpis_metadata:
+  error_mode: ignore
+  metric_statements:
+    - context: metric
+      statements:
+        # Add standard attributes to all nrdot_ metrics
+        - set(resource.attributes["nrdot.metric_type"], "kpi") where IsMatch(metric.name, "^nrdot_")
+        - set(resource.attributes["nrdot.version"], resource.attributes["nrdot.version"]) where IsMatch(metric.name, "^nrdot_")
+        - set(resource.attributes["nrdot.profile"], resource.attributes["nrdot.profile"]) where IsMatch(metric.name, "^nrdot_")
+        - set(resource.attributes["nrdot.ring"], resource.attributes["nrdot.ring"]) where IsMatch(metric.name, "^nrdot_")

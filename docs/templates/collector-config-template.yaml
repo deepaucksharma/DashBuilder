@@ -1,0 +1,295 @@
+# NRDOT v2 Collector Configuration Template
+# OpenTelemetry Collector configuration for process optimization
+# Copy to /etc/nrdot-collector-host/config.yaml
+
+# =============================================================================
+# EXTENSIONS
+# =============================================================================
+extensions:
+  # Health check endpoint for monitoring collector status
+  health_check:
+    endpoint: "0.0.0.0:13133"
+    path: "/health"
+    
+  # File storage for persistent state (EWMA calculations)
+  file_storage:
+    directory: /var/lib/nrdot/storage
+    timeout: 10s
+    
+  # Memory ballast to reduce GC pressure
+  memory_ballast:
+    size_mib: 64
+
+# =============================================================================
+# RECEIVERS
+# =============================================================================
+receivers:
+  # Host metrics receiver for process collection
+  hostmetrics:
+    # Collection interval - balance between granularity and volume
+    collection_interval: 60s
+    
+    # Process scraper configuration
+    scrapers:
+      process:
+        # Metrics to collect (optimized set)
+        metrics:
+          process.cpu.time:
+            enabled: true
+          process.memory.physical_usage:
+            enabled: true
+          process.disk.io:
+            enabled: true
+          # Disabled high-cardinality metrics
+          process.threads:
+            enabled: false
+          process.open_file_descriptors:
+            enabled: false
+          process.cpu.utilization:
+            enabled: false  # Can be derived from cpu.time
+        
+        # Resource attributes to collect
+        resource_attributes:
+          process.pid:
+            enabled: true
+          process.executable.name:
+            enabled: true
+          process.executable.path:
+            enabled: true
+          process.command_line:
+            enabled: false  # High cardinality
+          process.owner:
+            enabled: true
+        
+        # Exclude noise processes (loaded from optimization.yaml)
+        exclude:
+          names: ${file:/etc/nrdot-collector-host/optimization.yaml:process_classification.noise.patterns}
+          match_type: regexp
+    
+    # Optional: CPU scraper for host-level metrics
+    cpu:
+      metrics:
+        system.cpu.utilization:
+          enabled: true
+    
+    # Optional: Memory scraper for host-level metrics  
+    memory:
+      metrics:
+        system.memory.utilization:
+          enabled: true
+
+  # Prometheus receiver for self-monitoring
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'nrdot-self'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['localhost:8888']
+          metric_relabeling_configs:
+            - source_labels: [__name__]
+              regex: 'go_.*'
+              action: drop  # Drop Go runtime metrics
+
+# =============================================================================
+# PROCESSORS
+# =============================================================================
+processors:
+  # CRITICAL: Memory limiter must be first processor
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256          # Total memory limit
+    spike_limit_mib: 64     # Spike tolerance
+    limit_percentage: 0     # Disabled (using absolute limit)
+    spike_limit_percentage: 0
+
+  # Resource detection for cloud metadata
+  resourcedetection:
+    detectors: [env, system, docker, ec2, gcp, azure]
+    timeout: 2s
+    override: false
+    
+  # Add framework metadata
+  attributes/framework:
+    actions:
+      - key: nrdot.version
+        value: "2.0.0"
+        action: upsert
+      - key: nrdot.ring
+        value: ${env:NRDOT_RING:-0}
+        action: upsert
+      - key: nrdot.profile
+        from_attribute: active_profile
+        action: upsert
+      - key: service.name
+        value: "nrdot-optimized-processes"
+        action: insert
+
+  # Process scoring based on classification
+  transform/scoring:
+    metric_statements:
+      - context: datapoint
+        statements:
+          # Default score
+          - set(attributes["process.importance"], 0.3)
+          
+          # Critical system processes
+          - set(attributes["process.importance"], 1.0) where IsMatch(resource.attributes["process.executable.name"], "^(init|systemd|sshd)$")
+          
+          # Database processes
+          - set(attributes["process.importance"], 0.9) where IsMatch(resource.attributes["process.executable.name"], "^(postgres|mysql|mongo)")
+          
+          # Web servers
+          - set(attributes["process.importance"], 0.8) where IsMatch(resource.attributes["process.executable.name"], "^(nginx|apache|httpd)")
+          
+          # Application runtimes
+          - set(attributes["process.importance"], 0.6) where IsMatch(resource.attributes["process.executable.name"], "^(java|python|node|ruby)")
+          
+          # Monitoring agents
+          - set(attributes["process.importance"], 0.3) where IsMatch(resource.attributes["process.executable.name"], "(newrelic|datadog|splunk)")
+
+  # Filter based on importance and thresholds
+  filter/optimization:
+    error_mode: ignore
+    metrics:
+      datapoint:
+        # Always keep critical processes
+        - 'attributes["process.importance"] >= 0.9'
+        
+        # Apply dynamic filtering based on profile
+        - 'attributes["process.importance"] >= 0.5 and value > 10'  # CPU > 10%
+        
+        # Resource-based filtering
+        - 'resource.attributes["process.memory.physical_usage"] > 104857600'  # 100MB
+
+  # Group by attributes for aggregation
+  groupbyattrs:
+    keys:
+      - host.name
+      - service.name
+      - process.executable.name
+      - process.owner
+
+  # Generate KPI metrics
+  transform/kpis:
+    metric_statements:
+      - context: metric
+        statements:
+          # Count total series
+          - aggregate_on_attributes("sum", attributes["nrdot.series.count"], ["host.name"]) where name == "process.cpu.time"
+
+  # Batch for efficiency
+  batch:
+    send_batch_size: 1000
+    timeout: 10s
+    send_batch_max_size: 2000
+
+# =============================================================================
+# EXPORTERS
+# =============================================================================
+exporters:
+  # Primary New Relic export
+  otlphttp/newrelic:
+    endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT:-https://otlp.nr-data.net}
+    headers:
+      api-key: ${env:NEW_RELIC_LICENSE_KEY}
+    compression: gzip
+    timeout: 30s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 1000
+  
+  # Local Prometheus for control loop
+  prometheus:
+    endpoint: "0.0.0.0:8888"
+    namespace: nrdot
+    const_labels:
+      host: ${env:HOSTNAME}
+    resource_to_telemetry_conversion:
+      enabled: true
+    enable_open_metrics: true
+  
+  # Debug exporter (disabled by default)
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 100
+
+# =============================================================================
+# SERVICE PIPELINES
+# =============================================================================
+service:
+  # Enable extensions
+  extensions: [health_check, file_storage, memory_ballast]
+  
+  # Define pipelines
+  pipelines:
+    # Main process metrics pipeline
+    metrics/process:
+      receivers: [hostmetrics]
+      processors:
+        - memory_limiter        # Must be first
+        - resourcedetection
+        - attributes/framework
+        - transform/scoring
+        - filter/optimization
+        - groupbyattrs
+        - transform/kpis
+        - batch
+      exporters: [otlphttp/newrelic, prometheus]
+    
+    # Self-monitoring pipeline
+    metrics/self:
+      receivers: [prometheus]
+      processors:
+        - memory_limiter
+        - attributes/framework
+        - batch
+      exporters: [otlphttp/newrelic]
+  
+  # Telemetry configuration
+  telemetry:
+    logs:
+      level: ${env:OTEL_LOG_LEVEL:-info}
+      development: false
+      encoding: json
+      output_paths: 
+        - stdout
+        - /var/log/nrdot/collector.log
+      error_output_paths:
+        - stderr
+        - /var/log/nrdot/collector-error.log
+      initial_fields:
+        service: "nrdot-collector"
+        version: "2.0.0"
+    
+    metrics:
+      level: detailed
+      address: localhost:8889
+      
+    traces:
+      processors:
+        - batch:
+            timeout: 10s
+            send_batch_size: 1024
+
+# =============================================================================
+# ENVIRONMENT VARIABLES REFERENCE
+# =============================================================================
+# Required:
+#   - NEW_RELIC_LICENSE_KEY: Your New Relic license key
+#   - HOSTNAME: Host identifier
+#
+# Optional:
+#   - OTEL_EXPORTER_OTLP_ENDPOINT: New Relic OTLP endpoint (default: https://otlp.nr-data.net)
+#   - NRDOT_RING: Experiment ring assignment (0-7)
+#   - OTEL_LOG_LEVEL: Logging level (debug, info, warn, error)
+#   - NRDOT_PROFILE: Active optimization profile
+#
+# =============================================================================

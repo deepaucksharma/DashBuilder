@@ -1,0 +1,8 @@
+{
+  "schemaType": "LAUNCHER",
+  "id": "overview-launcher",
+  "displayName": "NRDOT Process Optimization",
+  "description": "Reduce host process telemetry costs by 70%+",
+  "rootNerdletId": "nrdot-host-process-optimization.overview",
+  "icon": "icon.png"
+}

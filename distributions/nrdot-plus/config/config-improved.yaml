@@ -1,0 +1,330 @@
+# NRDOT-Plus Enhanced Configuration (Day 0/1/2 Improvements)
+# Version: 2.1.0 - With hot-reload, receiver filters, and self-monitoring
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+    path: "/health"
+    
+  file_storage:
+    directory: /var/lib/nrdot-plus/storage
+    timeout: 10s
+    
+  memory_ballast:
+    size_mib: 64
+
+receivers:
+  # Process metrics with receiver-level filtering (Day 0 improvement)
+  hostmetrics/process_filtered:
+    collection_interval: 60s
+    scrapers:
+      process:
+        # Receiver-level filters (more efficient than downstream)
+        include:
+          # Critical system processes
+          names: ["^(init|systemd|kernel|sshd)$", "^(postgres|mysql|mongo|redis|cassandra|elastic)", "^(nginx|apache|httpd|haproxy|envoy)", "^(java|python|node|ruby|dotnet|php)"]
+          match_type: regexp
+        exclude:
+          # Kernel threads and noise
+          names: ["^\\[.*\\]$", "^(kworker|ksoftirqd|migration|rcu_|watchdog)", "(grep|awk|sed|sleep|true|false)"]
+          match_type: regexp
+        
+        # Process resource filters
+        # Min CPU: 0.1% (converted to cumulative seconds)
+        # Min Memory: 10MB
+        mute_process_name_error: true
+        mute_process_exe_error: true
+        mute_process_io_error: true
+        
+        # Optimized metric set
+        metrics:
+          process.cpu.time:
+            enabled: true
+          process.memory.physical_usage:
+            enabled: true
+          process.disk.io:
+            enabled: true
+          # High-cardinality metrics disabled
+          process.threads:
+            enabled: false
+          process.open_file_descriptors:
+            enabled: false
+    
+    # Host-level metrics (unchanged)
+    cpu:
+      metrics:
+        system.cpu.utilization:
+          enabled: true
+    
+    memory:
+      metrics:
+        system.memory.utilization:
+          enabled: true
+    
+    disk:
+      metrics:
+        system.disk.io:
+          enabled: true
+        system.disk.io_time:
+          enabled: false
+    
+    network:
+      metrics:
+        system.network.io:
+          enabled: true
+        system.network.connections:
+          enabled: false
+    
+    load:
+      metrics:
+        system.cpu.load_average.1m:
+          enabled: true
+
+  # Collector self-monitoring (Day 0 improvement)
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'otelcol'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['localhost:8888']
+          metric_relabel_configs:
+            # Keep only essential collector metrics
+            - source_labels: [__name__]
+              regex: 'otelcol_(receiver|processor|exporter)_(accepted|refused|dropped|queue|sent)_.*'
+              action: keep
+
+processors:
+  # Memory protection - MUST be first
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+  # Cloud resource detection
+  resourcedetection:
+    detectors: [env, system, docker, ec2, gcp, azure]
+    timeout: 2s
+    override: false
+    system:
+      hostname_sources: ["os", "dns"]
+
+  # Add NRDOT-Plus metadata
+  attributes/nrdot:
+    actions:
+      - key: nrdot.version
+        value: "2.1.0"
+        action: upsert
+      - key: nrdot.distribution
+        value: "plus"
+        action: upsert
+      - key: nrdot.ring
+        value: ${env:NRDOT_RING:-0}
+        action: upsert
+      - key: nrdot.profile
+        from_attribute: nrdot.active_profile
+        action: insert
+      - key: service.name
+        value: "nrdot-plus-host"
+        action: insert
+
+  # Process importance scoring with cache
+  transform/scoring:
+    metric_statements:
+      - context: datapoint
+        statements:
+          # Cache process key for reuse
+          - set(cache["proc_key"], Concat([resource.attributes["host.name"], ":", resource.attributes["process.executable.name"]], ""))
+          
+          # Default importance
+          - set(attributes["process.importance"], 0.3)
+          
+          # Critical system processes (1.0)
+          - set(attributes["process.importance"], 1.0) 
+            where IsMatch(resource.attributes["process.executable.name"], "^(init|systemd|kernel|sshd)$")
+          
+          # Databases (0.9)
+          - set(attributes["process.importance"], 0.9) 
+            where IsMatch(resource.attributes["process.executable.name"], "^(postgres|mysql|mongo|redis|cassandra|elastic)")
+          
+          # Web/API servers (0.8)
+          - set(attributes["process.importance"], 0.8) 
+            where IsMatch(resource.attributes["process.executable.name"], "^(nginx|apache|httpd|haproxy|envoy)")
+          
+          # Application runtimes (0.6)
+          - set(attributes["process.importance"], 0.6) 
+            where IsMatch(resource.attributes["process.executable.name"], "^(java|python|node|ruby|dotnet|php)")
+          
+          # Convert to float for EWMA
+          - set(attributes["process.importance_float"], Double(attributes["process.importance"]))
+
+  # EWMA with cold-start suppression (Day 1 improvement)
+  metricstransform/ewma_enhanced:
+    error_mode: ignore
+    metric_statements:
+      - context: metric
+        statements:
+          # Skip EWMA for first 5 collection intervals (cold-start)
+          - set(cache["observation_count"], cache["observation_count"] + 1) where cache["observation_count"] != nil
+          - set(cache["observation_count"], 1) where cache["observation_count"] == nil
+          - set(cache["skip_anomaly"], true) where cache["observation_count"] < 5
+          
+          # Apply EWMA only to treatment rings
+          - set(cache["is_treatment"], true) where resource.attributes["nrdot.ring"] == "2" or resource.attributes["nrdot.ring"] == "3"
+          - set(cache["apply_ewma"], true) where cache["is_treatment"] == true and attributes["process.importance_float"] > 0.5
+          
+          # EWMA calculations with drift reset (Day 1 improvement)
+          - set(cache["ewma_cpu"], nil) where name == "process.cpu.time" and cache["last_seen"] != nil and (Now() - cache["last_seen"]) > 300000000000  # Reset after 5 min absence
+          - set(cache["last_seen"], Now()) where name == "process.cpu.time"
+          
+          # Standard EWMA calculation
+          - set(cache["ewma_cpu"], value) where name == "process.cpu.time" and cache["apply_ewma"] == true and cache["ewma_cpu"] == nil
+          - set(cache["ewma_cpu"], (0.2 * value + 0.8 * cache["ewma_cpu"])) where name == "process.cpu.time" and cache["apply_ewma"] == true and cache["ewma_cpu"] != nil and cache["skip_anomaly"] != true
+
+  # Dynamic filtering with cardinality awareness (Day 2 improvement)
+  filter/optimization:
+    error_mode: ignore
+    metrics:
+      datapoint:
+        # Always keep critical processes
+        - 'attributes["process.importance"] >= 0.9'
+        
+        # Profile-based filtering
+        - 'attributes["process.importance"] >= ${file:/etc/nrdot-plus/optimization.yaml:profiles.${file:/etc/nrdot-plus/optimization.yaml:state.active_profile}.thresholds.min_importance_score}'
+        
+        # Cardinality guard - drop if too many series
+        - 'attributes["nrdot.series.count"] < ${env:NRDOT_MAX_SERIES_PER_HOST:-5000}'
+
+  # Metrics generation for KPIs and experiment metrics
+  metricsgeneration:
+    rules:
+      # CPU utilization percentage
+      - name: process.cpu.utilization
+        unit: "%"
+        type: gauge
+        value: (metric.process.cpu.time - metric.process.cpu.time_previous) / interval * 100
+
+      # Coverage metric
+      - name: nrdot.coverage.score
+        unit: "1"
+        type: gauge
+        value: count(metric.process.cpu.time where attributes["process.importance"] >= 0.8) / count(metric.process.cpu.time where attributes["process.importance"] >= 0.5)
+
+  # Cost calculation with cardinality weight (Day 0 improvement)
+  transform/cost:
+    metric_statements:
+      - context: datapoint
+        statements:
+          # Base cost per datapoint
+          - set(cache["base_cost"], ${file:/etc/nrdot-plus/optimization.yaml:cost_model.per_million_datapoints} / 1000000)
+          
+          # Cardinality multiplier (high-cardinality metrics cost more)
+          - set(cache["cardinality_factor"], 1.0)
+          - set(cache["cardinality_factor"], 1.5) where attributes["metric.cardinality"] > 1000
+          - set(cache["cardinality_factor"], 2.0) where attributes["metric.cardinality"] > 5000
+          
+          # Calculate weighted cost
+          - set(attributes["nrdot.estimated.cost"], cache["base_cost"] * cache["cardinality_factor"] * 3600 / 60)
+
+  # Batching with optimized settings (Day 2 improvement)
+  batch:
+    send_batch_size: 2000      # Increased from 1000
+    timeout: 5s                # Decreased from 10s
+    send_batch_max_size: 5000  # Increased from 2000
+
+exporters:
+  # New Relic OTLP export with enhanced queuing
+  otlphttp/newrelic:
+    endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT:-https://otlp.nr-data.net}
+    headers:
+      api-key: ${env:NEW_RELIC_LICENSE_KEY}
+    compression: gzip
+    timeout: 30s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 20      # Increased from 10
+      queue_size: 5000       # Increased from 1000
+      storage: file_storage  # Persist queue to disk
+
+  # Collector self-metrics export (Day 0 improvement)
+  otlphttp/newrelic_self:
+    endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT:-https://otlp.nr-data.net}
+    headers:
+      api-key: ${env:NEW_RELIC_LICENSE_KEY}
+    compression: gzip
+    # Different resource attributes for self-metrics
+    resource:
+      service.name: "nrdot-collector"
+      telemetry.sdk.name: "opentelemetry"
+
+  # Local metrics for control loop
+  prometheus:
+    endpoint: "0.0.0.0:8888"
+    namespace: nrdot
+    const_labels:
+      distribution: "plus"
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Debug output (disabled by default)
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 100
+
+service:
+  extensions: [health_check, file_storage, memory_ballast]
+  
+  pipelines:
+    # Process metrics pipeline with optimization
+    metrics/process:
+      receivers: [hostmetrics/process_filtered]
+      processors:
+        - memory_limiter
+        - resourcedetection
+        - attributes/nrdot
+        - transform/scoring
+        - metricstransform/ewma_enhanced
+        - filter/optimization
+        - metricsgeneration
+        - transform/cost
+        - batch
+      exporters: [otlphttp/newrelic, prometheus]
+    
+    # Host metrics pipeline (no optimization)
+    metrics/host:
+      receivers: [hostmetrics/process_filtered]
+      processors:
+        - memory_limiter
+        - resourcedetection
+        - attributes/nrdot
+        - batch
+      exporters: [otlphttp/newrelic]
+    
+    # Collector self-monitoring pipeline (Day 0 improvement)
+    metrics/collector_self:
+      receivers: [prometheus]
+      processors:
+        - memory_limiter
+        - batch
+      exporters: [otlphttp/newrelic_self]
+
+  telemetry:
+    logs:
+      level: ${env:OTEL_LOG_LEVEL:-info}
+      encoding: json
+      output_paths: 
+        - stdout
+        - /var/log/nrdot-plus/collector.log
+      initial_fields:
+        service: "nrdot-plus"
+        version: "2.1.0"
+    
+    metrics:
+      level: detailed
+      address: localhost:8889

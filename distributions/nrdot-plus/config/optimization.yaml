@@ -1,0 +1,245 @@
+# NRDOT-Plus Process Optimization Configuration
+# Default configuration with balanced profile
+
+version: 2.0.0
+schema_version: 1
+
+# Runtime state
+state:
+  active_profile: "balanced"
+  last_updated: "2024-01-01T00:00:00Z"
+  updated_by: "installer"
+  host_id: "${env:HOSTNAME}"
+  experiment_ring: "${env:NRDOT_RING:-0}"
+
+# Cost model
+cost_model:
+  currency: "${env:NRDOT_COST_CURRENCY:-USD}"
+  per_million_datapoints: ${env:NRDOT_COST_PER_MILLION:-0.25}
+  billing_model: "${env:NRDOT_BILLING_MODEL:-datapoints}"
+  collection_interval_seconds: 60
+
+# Process classification
+process_classification:
+  # Tier 1: Critical System (Score 1.0)
+  critical_system:
+    score: 1.0
+    patterns:
+      linux:
+        - "^(init|systemd|kernel)$"
+        - "^systemd-"
+        - "^sshd$"
+        - "^NetworkManager$"
+        - "^chronyd$"
+        - "^rsyslogd$"
+      windows:
+        - "^(System|smss\\.exe|csrss\\.exe|wininit\\.exe)$"
+        - "^services\\.exe$"
+        - "^lsass\\.exe$"
+        - "^svchost\\.exe$"
+        - "^winlogon\\.exe$"
+      
+  # Tier 2: Databases (Score 0.9)
+  database:
+    score: 0.9
+    patterns:
+      common:
+        - "^(postgres|postmaster)$"
+        - "^mysqld$"
+        - "^mongod$"
+        - "^redis-server$"
+        - "^cassandra$"
+        - "^elasticsearch$"
+        - "^influxd$"
+        - "^cockroach$"
+        - "^mariadbd$"
+      windows:
+        - "^sqlservr\\.exe$"
+        - "^oracle\\.exe$"
+  
+  # Tier 3: Web/Proxy Servers (Score 0.8)
+  web_server:
+    score: 0.8
+    patterns:
+      common:
+        - "^nginx"
+        - "^apache2?$"
+        - "^httpd$"
+        - "^haproxy$"
+        - "^envoy$"
+        - "^traefik$"
+        - "^caddy$"
+        - "^varnish"
+      windows:
+        - "^w3wp\\.exe$"
+        - "^iisexpress\\.exe$"
+  
+  # Tier 4: Application Runtimes (Score 0.6)
+  application:
+    score: 0.6
+    patterns:
+      common:
+        - "^java(\\.exe)?$"
+        - "^python([0-9\\.]+)?(\\.exe)?$"
+        - "^ruby(\\.exe)?$"
+        - "^node(\\.exe)?$"
+        - "^dotnet(\\.exe)?$"
+        - "^php(-fpm)?$"
+        - "^perl$"
+        - "^go$"
+        - "^beam\\.smp$"  # Erlang/Elixir
+  
+  # Tier 5: Container/Orchestration (Score 0.7)
+  container:
+    score: 0.7
+    patterns:
+      common:
+        - "^dockerd$"
+        - "^containerd$"
+        - "^kubelet$"
+        - "^kube-proxy$"
+        - "^cri-o$"
+        - "^podman$"
+  
+  # Tier 6: Monitoring/Agents (Score 0.3)
+  monitoring:
+    score: 0.3
+    patterns:
+      common:
+        - "newrelic"
+        - "datadog"
+        - "splunkd"
+        - "telegraf"
+        - "prometheus"
+        - "grafana"
+        - "collectd"
+        - "filebeat"
+        - "metricbeat"
+  
+  # Tier 7: Message Queues (Score 0.8)
+  message_queue:
+    score: 0.8
+    patterns:
+      common:
+        - "^rabbitmq"
+        - "^kafka$"
+        - "^activemq$"
+        - "^nats-server$"
+        - "^pulsar$"
+        - "^mosquitto$"
+  
+  # Tier 8: CI/CD (Score 0.4)
+  ci_cd:
+    score: 0.4
+    patterns:
+      common:
+        - "^jenkins"
+        - "^gitlab-runner"
+        - "^buildkite-agent"
+        - "^circleci"
+        - "^teamcity"
+        - "^bamboo"
+  
+  # Tier 9: Noise (Score 0.0 - excluded)
+  noise:
+    score: 0.0
+    patterns:
+      linux:
+        - "^(kworker|ksoftirqd|migration|rcu_)"
+        - "^(ps|ls|cat|grep|awk|sed|find|which|sleep)$"
+        - "^\\.("
+        - "^\\["
+      windows:
+        - "^(SearchIndexer|WmiPrvSE|TrustedInstaller)"
+        - "^(tasklist|findstr|cmd|timeout)$"
+        - "^conhost\\.exe$"
+        - "^RuntimeBroker\\.exe$"
+
+# Optimization profiles
+profiles:
+  conservative:
+    description: "Maximum visibility, minimal filtering"
+    thresholds:
+      min_importance_score: 0.2
+      cpu_threshold_percent: 5.0
+      memory_threshold_mb: 50
+      io_threshold_kb_per_sec: 500
+    limits:
+      max_series_per_host: 10000
+      top_k_per_class:
+        critical_system: 999
+        database: 100
+        web_server: 50
+        application: 40
+        monitoring: 20
+        default: 10
+    
+  balanced:
+    description: "Good balance of cost and coverage (RECOMMENDED)"
+    thresholds:
+      min_importance_score: 0.5
+      cpu_threshold_percent: 10.0
+      memory_threshold_mb: 100
+      io_threshold_kb_per_sec: 1000
+    limits:
+      max_series_per_host: 5000
+      top_k_per_class:
+        critical_system: 999
+        database: 50
+        web_server: 30
+        application: 20
+        monitoring: 10
+        default: 5
+    
+  aggressive:
+    description: "Maximum cost reduction"
+    thresholds:
+      min_importance_score: 0.7
+      cpu_threshold_percent: 20.0
+      memory_threshold_mb: 200
+      io_threshold_kb_per_sec: 5000
+    limits:
+      max_series_per_host: 2000
+      top_k_per_class:
+        critical_system: 50
+        database: 20
+        web_server: 15
+        application: 10
+        monitoring: 5
+        default: 2
+    
+  emergency:
+    description: "Crisis mode - minimum telemetry"
+    thresholds:
+      min_importance_score: 0.9
+      cpu_threshold_percent: 50.0
+      memory_threshold_mb: 500
+      io_threshold_kb_per_sec: 10000
+    limits:
+      max_series_per_host: 500
+      top_k_per_class:
+        critical_system: 20
+        database: 10
+        web_server: 5
+        application: 5
+        monitoring: 0
+        default: 0
+
+# Experiments
+experiments:
+  enabled: true
+  active_experiments: []
+
+# Advanced settings
+advanced:
+  ewma:
+    enabled: true
+    alpha: 0.2
+  
+  variance_detection:
+    enabled: true
+    threshold_multiplier: 2.0
+  
+  time_based_rules:
+    enabled: false
+    rules: []

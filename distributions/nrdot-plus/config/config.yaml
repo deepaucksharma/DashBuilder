@@ -1,0 +1,279 @@
+# NRDOT-Plus Default Configuration
+# This is the main collector configuration with optimization enabled
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+    path: "/health"
+    
+  file_storage:
+    directory: /var/lib/nrdot-plus/storage
+    timeout: 10s
+    
+  memory_ballast:
+    size_mib: 64
+
+receivers:
+  # Host metrics with process optimization
+  hostmetrics:
+    collection_interval: 60s
+    scrapers:
+      process:
+        # Optimized metric set
+        metrics:
+          process.cpu.time:
+            enabled: true
+          process.memory.physical_usage:
+            enabled: true
+          process.disk.io:
+            enabled: true
+          # High-cardinality metrics disabled by default
+          process.threads:
+            enabled: false
+          process.open_file_descriptors:
+            enabled: false
+        
+        # Load exclusions from optimization config
+        exclude:
+          names: ${file:/etc/nrdot-plus/optimization.yaml:process_classification.noise.patterns}
+          match_type: regexp
+    
+    # Host-level metrics
+    cpu:
+      metrics:
+        system.cpu.utilization:
+          enabled: true
+    
+    memory:
+      metrics:
+        system.memory.utilization:
+          enabled: true
+    
+    disk:
+      metrics:
+        system.disk.io:
+          enabled: true
+        system.disk.io_time:
+          enabled: false
+    
+    network:
+      metrics:
+        system.network.io:
+          enabled: true
+        system.network.connections:
+          enabled: false
+    
+    load:
+      metrics:
+        system.cpu.load_average.1m:
+          enabled: true
+
+  # Self-monitoring
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'nrdot-plus-self'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['localhost:8888']
+
+processors:
+  # Memory protection - MUST be first
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+  # Cloud resource detection
+  resourcedetection:
+    detectors: [env, system, docker, ec2, gcp, azure]
+    timeout: 2s
+    override: false
+    system:
+      hostname_sources: ["os", "dns"]
+
+  # Add NRDOT-Plus metadata
+  attributes/nrdot:
+    actions:
+      - key: nrdot.version
+        value: "2.0.0"
+        action: upsert
+      - key: nrdot.distribution
+        value: "plus"
+        action: upsert
+      - key: nrdot.ring
+        value: ${env:NRDOT_RING:-0}
+        action: upsert
+      - key: service.name
+        value: "nrdot-plus-host"
+        action: insert
+
+  # Process importance scoring
+  transform/scoring:
+    metric_statements:
+      - context: datapoint
+        statements:
+          # Default importance
+          - set(attributes["process.importance"], 0.3)
+          
+          # Critical system processes (1.0)
+          - set(attributes["process.importance"], 1.0) 
+            where IsMatch(resource.attributes["process.executable.name"], "^(init|systemd|kernel|sshd)$")
+          
+          # Databases (0.9)
+          - set(attributes["process.importance"], 0.9) 
+            where IsMatch(resource.attributes["process.executable.name"], "^(postgres|mysql|mongo|redis|cassandra|elastic)")
+          
+          # Web/API servers (0.8)
+          - set(attributes["process.importance"], 0.8) 
+            where IsMatch(resource.attributes["process.executable.name"], "^(nginx|apache|httpd|haproxy|envoy)")
+          
+          # Application runtimes (0.6)
+          - set(attributes["process.importance"], 0.6) 
+            where IsMatch(resource.attributes["process.executable.name"], "^(java|python|node|ruby|dotnet|php)")
+          
+          # Monitoring agents (0.3)
+          - set(attributes["process.importance"], 0.3) 
+            where IsMatch(resource.attributes["process.executable.name"], "(newrelic|datadog|splunk|prometheus)")
+
+  # Dynamic filtering based on profile
+  filter/optimization:
+    error_mode: ignore
+    metrics:
+      datapoint:
+        # Always keep critical processes
+        - 'attributes["process.importance"] >= 0.9'
+        
+        # Profile-based filtering (loaded from optimization.yaml)
+        - 'attributes["process.importance"] >= ${file:/etc/nrdot-plus/optimization.yaml:profiles.${file:/etc/nrdot-plus/optimization.yaml:state.active_profile}.thresholds.min_importance_score}'
+
+  # Resource-based filtering
+  filter/resources:
+    error_mode: ignore
+    metrics:
+      datapoint:
+        # CPU threshold
+        - 'name == "process.cpu.time" and value > ${file:/etc/nrdot-plus/optimization.yaml:profiles.${file:/etc/nrdot-plus/optimization.yaml:state.active_profile}.thresholds.cpu_threshold_percent}'
+        
+        # Memory threshold (convert MB to bytes)
+        - 'name == "process.memory.physical_usage" and value > (${file:/etc/nrdot-plus/optimization.yaml:profiles.${file:/etc/nrdot-plus/optimization.yaml:state.active_profile}.thresholds.memory_threshold_mb} * 1048576)'
+
+  # Top-K limiting per class
+  groupbyattrs:
+    keys:
+      - host.name
+      - process.executable.name
+      - process.owner
+
+  # KPI metric generation
+  transform/kpis:
+    metric_statements:
+      - context: metric
+        statements:
+          # Total series counter
+          - aggregate_on_attributes("count", attributes["nrdot.process.series.total"], ["host.name"]) 
+            where name == "process.cpu.time"
+
+  # Cost calculation
+  transform/cost:
+    metric_statements:
+      - context: datapoint
+        statements:
+          # Calculate hourly cost
+          - set(attributes["nrdot.estimated.cost"], 
+            attributes["nrdot.process.series.total"] * 
+            ${file:/etc/nrdot-plus/optimization.yaml:cost_model.per_million_datapoints} / 1000000 * 
+            3600 / ${file:/etc/nrdot-plus/optimization.yaml:cost_model.collection_interval_seconds})
+
+  # Batching for efficiency
+  batch:
+    send_batch_size: 1000
+    timeout: 10s
+    send_batch_max_size: 2000
+
+exporters:
+  # New Relic OTLP export
+  otlphttp/newrelic:
+    endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT:-https://otlp.nr-data.net}
+    headers:
+      api-key: ${env:NEW_RELIC_LICENSE_KEY}
+    compression: gzip
+    timeout: 30s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 1000
+
+  # Local metrics for control loop
+  prometheus:
+    endpoint: "0.0.0.0:8888"
+    namespace: nrdot
+    const_labels:
+      distribution: "plus"
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Debug output (disabled by default)
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 100
+
+service:
+  extensions: [health_check, file_storage, memory_ballast]
+  
+  pipelines:
+    # Process metrics pipeline with optimization
+    metrics/process:
+      receivers: [hostmetrics]
+      processors:
+        - memory_limiter
+        - resourcedetection
+        - attributes/nrdot
+        - transform/scoring
+        - filter/optimization
+        - filter/resources
+        - groupbyattrs
+        - transform/kpis
+        - transform/cost
+        - batch
+      exporters: [otlphttp/newrelic, prometheus]
+    
+    # Host metrics pipeline (no optimization)
+    metrics/host:
+      receivers: [hostmetrics]
+      processors:
+        - memory_limiter
+        - resourcedetection
+        - attributes/nrdot
+        - batch
+      exporters: [otlphttp/newrelic]
+    
+    # Self-monitoring pipeline
+    metrics/self:
+      receivers: [prometheus]
+      processors:
+        - memory_limiter
+        - attributes/nrdot
+        - batch
+      exporters: [otlphttp/newrelic]
+
+  telemetry:
+    logs:
+      level: ${env:OTEL_LOG_LEVEL:-info}
+      encoding: json
+      output_paths: 
+        - stdout
+        - /var/log/nrdot-plus/collector.log
+      initial_fields:
+        service: "nrdot-plus"
+        version: "2.0.0"
+    
+    metrics:
+      level: detailed
+      address: localhost:8889

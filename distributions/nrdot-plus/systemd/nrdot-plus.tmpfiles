@@ -1,0 +1,13 @@
+# NRDOT-Plus temporary files configuration
+# This file should be installed as /usr/lib/tmpfiles.d/nrdot-plus.conf
+
+# Type Path                    Mode User       Group      Age Argument
+d     /var/lib/nrdot-plus      0755 nrdot-plus nrdot-plus -   -
+d     /var/lib/nrdot-plus/storage 0755 nrdot-plus nrdot-plus -   -
+d     /var/lib/nrdot-plus/state   0755 nrdot-plus nrdot-plus -   -
+d     /var/log/nrdot-plus      0755 nrdot-plus nrdot-plus -   -
+d     /var/run/nrdot-plus      0755 nrdot-plus nrdot-plus -   -
+d     /etc/nrdot-plus          0755 root       root       -   -
+
+# Lock file for control loop
+f     /var/run/nrdot-plus-control-loop.lock 0644 nrdot-plus nrdot-plus -   -

@@ -1,0 +1,441 @@
+{
+  "name": "NRDOT Day 1 Monitoring & Validation",
+  "description": "Comprehensive monitoring dashboard for NRDOT deployment validation",
+  "permissions": "PUBLIC_READ_WRITE",
+  "pages": [
+    {
+      "name": "Collector Health",
+      "description": "OpenTelemetry collector performance and health metrics",
+      "widgets": [
+        {
+          "title": "Collector Acceptance Ratio",
+          "visualization": {
+            "id": "viz.line"
+          },
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "widget_id": 1,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT rate(sum(otelcol_receiver_accepted_metric_points), 1 minute) as 'Accepted', rate(sum(otelcol_receiver_refused_metric_points), 1 minute) as 'Refused' FROM Metric WHERE service.name = 'nrdot-collector' TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Collector CPU & Memory",
+          "visualization": {
+            "id": "viz.line"
+          },
+          "layout": {
+            "column": 5,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "widget_id": 2,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT average(system.cpu.utilization) as 'CPU %', average(system.memory.utilization) as 'Memory %' FROM Metric WHERE process.executable.name = 'otelcol' TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Export Queue Health",
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "layout": {
+            "column": 9,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "widget_id": 3,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT average(otelcol_exporter_queue_size) as 'Queue Size', average(otelcol_exporter_queue_capacity) as 'Capacity', average(otelcol_exporter_queue_size) / average(otelcol_exporter_queue_capacity) * 100 as 'Usage %' FROM Metric WHERE service.name = 'nrdot-collector' SINCE 5 minutes ago"
+              }
+            ],
+            "thresholds": [
+              {
+                "value": 80,
+                "severity": "WARNING"
+              },
+              {
+                "value": 90,
+                "severity": "CRITICAL"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Dropped Metrics",
+          "visualization": {
+            "id": "viz.line"
+          },
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 12,
+            "height": 3
+          },
+          "widget_id": 4,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT sum(otelcol_processor_dropped_metric_points) FROM Metric WHERE service.name = 'nrdot-collector' TIMESERIES AUTO"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "KPI Metrics",
+      "description": "Key performance indicators for NRDOT optimization",
+      "widgets": [
+        {
+          "title": "Series Reduction",
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "widget_id": 5,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT latest(nrdot.process.series.total) as 'Total', latest(nrdot.process.series.kept) as 'Kept', (latest(nrdot.process.series.total) - latest(nrdot.process.series.kept)) / latest(nrdot.process.series.total) * 100 as 'Reduction %' FROM Metric SINCE 5 minutes ago"
+              }
+            ],
+            "thresholds": [
+              {
+                "value": 70,
+                "severity": "SUCCESS"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Coverage by Importance",
+          "visualization": {
+            "id": "viz.pie"
+          },
+          "layout": {
+            "column": 5,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "widget_id": 6,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT count(*) FROM Metric WHERE service.name = 'nrdot-plus-host' FACET process.importance SINCE 5 minutes ago"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Critical Process Coverage",
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "layout": {
+            "column": 9,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "widget_id": 7,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT average(nrdot.coverage.critical) as 'Coverage %' FROM Metric SINCE 5 minutes ago"
+              }
+            ],
+            "thresholds": [
+              {
+                "value": 95,
+                "severity": "SUCCESS"
+              },
+              {
+                "value": 90,
+                "severity": "WARNING"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Profile Changes",
+          "visualization": {
+            "id": "viz.table"
+          },
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 12,
+            "height": 3
+          },
+          "widget_id": 8,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT timestamp, message FROM Log WHERE message LIKE '%Profile change%' SINCE 24 hours ago LIMIT 20"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "EWMA Experiment",
+      "description": "Anomaly detection experiment metrics",
+      "widgets": [
+        {
+          "title": "Treatment vs Control Groups",
+          "visualization": {
+            "id": "viz.bar"
+          },
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 6,
+            "height": 3
+          },
+          "widget_id": 9,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT uniqueCount(host.name) FROM Metric WHERE service.name = 'nrdot-plus-host' FACET experiment.group SINCE 1 hour ago"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Anomaly Detection Rate",
+          "visualization": {
+            "id": "viz.line"
+          },
+          "layout": {
+            "column": 7,
+            "row": 1,
+            "width": 6,
+            "height": 3
+          },
+          "widget_id": 10,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT count(*) FROM Metric WHERE process.is_anomaly = true FACET experiment.group TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Anomaly Levels Distribution",
+          "visualization": {
+            "id": "viz.heatmap"
+          },
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 6,
+            "height": 3
+          },
+          "widget_id": 11,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT count(*) FROM Metric WHERE process.cpu.anomaly_level IS NOT NULL FACET process.cpu.anomaly_level, experiment.group SINCE 1 hour ago"
+              }
+            ]
+          }
+        },
+        {
+          "title": "False Positive Analysis",
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "layout": {
+            "column": 7,
+            "row": 4,
+            "width": 6,
+            "height": 3
+          },
+          "widget_id": 12,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT count(*) as 'Total Anomalies', filter(count(*), WHERE process.cpu.deviation_pct < 50) as 'Potential False Positives', filter(count(*), WHERE process.cpu.deviation_pct < 50) / count(*) * 100 as 'False Positive %' FROM Metric WHERE process.is_anomaly = true SINCE 1 hour ago"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cost Analysis",
+      "description": "Cost tracking and optimization metrics",
+      "widgets": [
+        {
+          "title": "Cost by Profile",
+          "visualization": {
+            "id": "viz.line"
+          },
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 6,
+            "height": 3
+          },
+          "widget_id": 13,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT sum(nrdot.estimated.cost) FROM Metric FACET nrdot.profile TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Hourly Cost Projection",
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "layout": {
+            "column": 7,
+            "row": 1,
+            "width": 6,
+            "height": 3
+          },
+          "widget_id": 14,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT sum(nrdot.estimated.cost) as 'Current Hour', sum(nrdot.estimated.cost) * 24 as 'Daily Projection', sum(nrdot.estimated.cost) * 24 * 30 as 'Monthly Projection' FROM Metric SINCE 1 hour ago"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Cost vs Coverage Trade-off",
+          "visualization": {
+            "id": "viz.scatter"
+          },
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 12,
+            "height": 3
+          },
+          "widget_id": 15,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT average(nrdot.coverage.score) as 'coverage', sum(nrdot.estimated.cost) as 'cost' FROM Metric FACET nrdot.profile, capture(host.name, r'.*') as 'host' SINCE 1 hour ago LIMIT 100"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Host & Process Detail",
+      "description": "Detailed host and process metrics",
+      "widgets": [
+        {
+          "title": "Top Processes by Importance",
+          "visualization": {
+            "id": "viz.table"
+          },
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 6,
+            "height": 3
+          },
+          "widget_id": 16,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT average(process.importance) as 'Importance', count(*) as 'Count', average(process.cpu.utilization) as 'CPU %' FROM Metric WHERE service.name = 'nrdot-plus-host' FACET process.executable.name SINCE 5 minutes ago LIMIT 20"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Hosts by Ring Assignment",
+          "visualization": {
+            "id": "viz.table"
+          },
+          "layout": {
+            "column": 7,
+            "row": 1,
+            "width": 6,
+            "height": 3
+          },
+          "widget_id": 17,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT latest(nrdot.ring) as 'Ring', latest(nrdot.profile) as 'Profile', count(*) as 'Processes' FROM Metric WHERE service.name = 'nrdot-plus-host' FACET host.name SINCE 5 minutes ago"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Process Anomaly Detail",
+          "visualization": {
+            "id": "viz.table"
+          },
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 12,
+            "height": 3
+          },
+          "widget_id": 18,
+          "configuration": {
+            "queries": [
+              {
+                "accountId": 0,
+                "query": "SELECT latest(process.cpu.ewma) as 'CPU EWMA', latest(process.cpu.deviation_pct) as 'CPU Dev %', latest(process.memory.ewma) as 'Mem EWMA', latest(process.memory.deviation_pct) as 'Mem Dev %' FROM Metric WHERE process.is_anomaly = true FACET host.name, process.executable.name SINCE 5 minutes ago LIMIT 50"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

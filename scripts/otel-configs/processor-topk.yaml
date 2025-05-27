@@ -1,0 +1,106 @@
+# Top-K Series Limiting Processor
+# This implements cardinality control by keeping only the top K series per host and per class
+# Note: This is a conceptual implementation as standard OTel doesn't have a native top-K processor
+
+# First, we need to group and rank processes
+metricstransform/topk_prepare:
+  error_mode: ignore
+  metric_statements:
+    # Calculate composite score for ranking (importance * resource usage)
+    - context: metric
+      statements:
+        # For CPU metrics, create ranking score
+        - set(cache["ranking_score"], resource.attributes["process.importance_float"] * value) where name == "process.cpu.time"
+        - set(resource.attributes["process.ranking_score"], cache["ranking_score"]) where name == "process.cpu.time"
+        
+        # Add host-specific series counter
+        - set(cache["host_series_key"], Concat([resource.attributes["host.name"], ":", metric.name], ""))
+        - set(resource.attributes["series_key"], Concat([resource.attributes["host.name"], ":", resource.attributes["process.pid"], ":", resource.attributes["process.executable.name"]], ""))
+
+# Group by attributes processor to aggregate by host and class
+groupbyattrs/topk_grouping:
+  keys:
+    - host.name
+    - process.classification
+    - nrdot.ring
+    - nrdot.profile
+
+# The actual top-K filtering would require a custom processor
+# This configuration shows the logical implementation using available processors
+metricstransform/topk_filter:
+  error_mode: ignore
+  metric_statements:
+    # Mark series for keeping based on ranking within groups
+    - context: metric
+      statements:
+        # Get limits from profile (these would come from optimization.yaml)
+        - set(cache["max_series_per_host"], 5000) # Default, should be ${file:...}
+        - set(cache["max_series_per_class"], 1000) # Default per classification tier
+        
+        # For critical processes, always keep
+        - set(resource.attributes["topk.keep"], true) where resource.attributes["process.classification"] == "critical_system"
+        
+        # For database processes, keep top 1000 by ranking score
+        - set(resource.attributes["topk.keep"], true) where resource.attributes["process.classification"] == "database" and resource.attributes["process.ranking_score"] != nil
+        
+        # For other tiers, apply stricter limits
+        - set(cache["tier_limit"], 500) where resource.attributes["process.classification"] == "web_server"
+        - set(cache["tier_limit"], 300) where resource.attributes["process.classification"] == "application"
+        - set(cache["tier_limit"], 100) where resource.attributes["process.classification"] == "monitoring"
+        - set(cache["tier_limit"], 50) where resource.attributes["process.classification"] == "utility"
+        
+        # Mark for keeping if within tier limit (simplified)
+        - set(resource.attributes["topk.keep"], true) where resource.attributes["process.ranking_score"] != nil
+
+# Alternative implementation using filter processor with complex conditions
+filter/topk_enforcement:
+  error_mode: ignore
+  metrics:
+    # Drop metrics not marked for keeping
+    exclude:
+      match_type: strict
+      resource_attributes:
+        - key: topk.keep
+          value: false
+    # Additional conditions can be added here
+
+# Hybrid approach: Use sampling processor for probabilistic limiting
+probabilisticsampler/topk_sampling:
+  # Sample lower-importance processes when over limit
+  sampling_percentage: 10
+  attribute_source: resource
+  # Only sample non-critical processes
+  from_attribute: "process.importance_float"
+  sampling_priority: [
+    {value: 1.0, sampling_percentage: 100},    # Critical: always keep
+    {value: 0.9, sampling_percentage: 90},     # Database: keep 90%
+    {value: 0.8, sampling_percentage: 70},     # Web Server: keep 70%
+    {value: 0.7, sampling_percentage: 50},     # Application: keep 50%
+    {value: 0.5, sampling_percentage: 30},     # Monitoring: keep 30%
+    {value: 0.4, sampling_percentage: 20},     # Utility: keep 20%
+    {value: 0.3, sampling_percentage: 10},     # Unknown: keep 10%
+  ]
+
+# Add top-K metadata to kept series
+metricstransform/topk_metadata:
+  error_mode: ignore
+  metric_statements:
+    - context: metric
+      statements:
+        # Add metadata about top-K filtering
+        - set(resource.attributes["topk.applied"], true) where resource.attributes["topk.keep"] == true
+        - set(resource.attributes["topk.rank"], cache["series_rank"]) where cache["series_rank"] != nil
+        - set(resource.attributes["topk.limit_type"], "per_host") where cache["limit_type"] == "host"
+        - set(resource.attributes["topk.limit_type"], "per_class") where cache["limit_type"] == "class"
+
+# Note: A production implementation would require:
+# 1. A custom processor that maintains state of series counts per host/class
+# 2. Ranking logic based on composite scores (importance + resource usage)  
+# 3. Dynamic limit enforcement based on optimization.yaml profiles
+# 4. Efficient data structures for tracking top-K elements
+# 
+# Alternative approaches:
+# 1. Use external processing (e.g., Redis) to track and rank series
+# 2. Implement as a Collector extension that other processors can query
+# 3. Use the experimental Adaptive Metrics Processor when available
+# 4. Implement client-side limiting in the hostmetrics receiver

@@ -1,0 +1,32 @@
+# Sample NRQL queries for validation
+# Lines starting with # are ignored
+
+# Basic transaction count
+SELECT count(*) FROM Transaction SINCE 1 hour ago
+
+# Average response time with facet
+SELECT average(duration) FROM Transaction FACET appName SINCE 1 hour ago
+
+# Percentile analysis
+SELECT percentile(duration, 50, 90, 99) FROM Transaction WHERE appName = 'web-app' SINCE 1 day ago
+
+# Error rate calculation
+SELECT percentage(count(*), WHERE error IS true) FROM Transaction FACET appName TIMESERIES SINCE 1 hour ago
+
+# Database query performance
+SELECT average(databaseDuration) FROM Span WHERE category = 'database' FACET db.statement SINCE 30 minutes ago
+
+# Custom event analysis
+SELECT count(*), average(orderValue) FROM OrderCompleted WHERE customerType = 'premium' FACET region SINCE 1 week ago
+
+# High cardinality example (will trigger warning)
+SELECT count(*) FROM PageView FACET userId, sessionId, pageUrl SINCE 1 day ago
+
+# Missing time window (will be auto-corrected)
+SELECT count(*) FROM Transaction WHERE duration > 1
+
+# Invalid function name (will suggest correction)
+SELECT avg(duration) FROM Transaction SINCE 1 hour ago
+
+# Syntax error example
+SEELCT count(*) FORM Transaction WHERE appName = 'web-app'

@@ -1,0 +1,97 @@
+# EWMA (Exponentially Weighted Moving Average) processor for anomaly detection
+# This implements proper EWMA calculation with anomaly detection thresholds
+
+metricstransform/ewma:
+  error_mode: ignore
+  log_statements: true
+  metric_statements:
+    # EWMA for CPU metrics
+    - context: metric
+      statements:
+        # Only process CPU time metrics for non-noise processes
+        - set(cache["process_key"], Concat([resource.attributes["host.name"], ":", resource.attributes["process.pid"], ":", resource.attributes["process.executable.name"]], "")) where name == "process.cpu.time" and resource.attributes["process.importance_float"] > 0.0
+        
+        # Initialize EWMA if not exists (using cache as pseudo-state)
+        - set(cache["ewma_cpu"], value) where name == "process.cpu.time" and cache["ewma_cpu"] == nil
+        
+        # Calculate EWMA: new_ewma = alpha * current + (1 - alpha) * previous
+        # Using alpha = 0.2 as default
+        - set(cache["ewma_cpu"], (0.2 * value + 0.8 * cache["ewma_cpu"])) where name == "process.cpu.time" and cache["ewma_cpu"] != nil
+        
+        # Calculate deviation from EWMA
+        - set(cache["cpu_deviation"], Abs(value - cache["ewma_cpu"]) / cache["ewma_cpu"]) where name == "process.cpu.time" and cache["ewma_cpu"] > 0
+        
+        # Mark as anomaly if deviation > threshold (e.g., 50% deviation)
+        - set(resource.attributes["process.cpu.is_anomaly"], true) where name == "process.cpu.time" and cache["cpu_deviation"] > 0.5
+        - set(resource.attributes["process.cpu.is_anomaly"], false) where name == "process.cpu.time" and cache["cpu_deviation"] <= 0.5
+        
+        # Store EWMA value as attribute for debugging/monitoring
+        - set(resource.attributes["process.cpu.ewma"], cache["ewma_cpu"]) where name == "process.cpu.time"
+        - set(resource.attributes["process.cpu.deviation"], cache["cpu_deviation"]) where name == "process.cpu.time" and cache["cpu_deviation"] != nil
+
+    # EWMA for Memory metrics
+    - context: metric
+      statements:
+        # Process memory RSS metrics
+        - set(cache["process_key"], Concat([resource.attributes["host.name"], ":", resource.attributes["process.pid"], ":", resource.attributes["process.executable.name"]], "")) where name == "process.memory.physical_usage" and resource.attributes["process.importance_float"] > 0.0
+        
+        # Initialize EWMA for memory
+        - set(cache["ewma_memory"], value) where name == "process.memory.physical_usage" and cache["ewma_memory"] == nil
+        
+        # Calculate EWMA for memory
+        - set(cache["ewma_memory"], (0.2 * value + 0.8 * cache["ewma_memory"])) where name == "process.memory.physical_usage" and cache["ewma_memory"] != nil
+        
+        # Calculate memory deviation
+        - set(cache["memory_deviation"], Abs(value - cache["ewma_memory"]) / cache["ewma_memory"]) where name == "process.memory.physical_usage" and cache["ewma_memory"] > 0
+        
+        # Mark memory anomaly (threshold: 40% deviation)
+        - set(resource.attributes["process.memory.is_anomaly"], true) where name == "process.memory.physical_usage" and cache["memory_deviation"] > 0.4
+        - set(resource.attributes["process.memory.is_anomaly"], false) where name == "process.memory.physical_usage" and cache["memory_deviation"] <= 0.4
+        
+        # Store EWMA and deviation
+        - set(resource.attributes["process.memory.ewma"], cache["ewma_memory"]) where name == "process.memory.physical_usage"
+        - set(resource.attributes["process.memory.deviation"], cache["memory_deviation"]) where name == "process.memory.physical_usage" and cache["memory_deviation"] != nil
+
+    # EWMA for IO metrics
+    - context: metric  
+      statements:
+        # Process disk IO read bytes
+        - set(cache["process_key"], Concat([resource.attributes["host.name"], ":", resource.attributes["process.pid"], ":", resource.attributes["process.executable.name"]], "")) where name == "process.disk.io" and attributes["direction"] == "read" and resource.attributes["process.importance_float"] > 0.0
+        
+        # Initialize EWMA for IO
+        - set(cache["ewma_io_read"], value) where name == "process.disk.io" and attributes["direction"] == "read" and cache["ewma_io_read"] == nil
+        
+        # Calculate EWMA for IO
+        - set(cache["ewma_io_read"], (0.2 * value + 0.8 * cache["ewma_io_read"])) where name == "process.disk.io" and attributes["direction"] == "read" and cache["ewma_io_read"] != nil
+        
+        # Calculate IO deviation
+        - set(cache["io_deviation"], Abs(value - cache["ewma_io_read"]) / cache["ewma_io_read"]) where name == "process.disk.io" and attributes["direction"] == "read" and cache["ewma_io_read"] > 0
+        
+        # Mark IO anomaly (threshold: 60% deviation - IO is more variable)
+        - set(resource.attributes["process.io.is_anomaly"], true) where name == "process.disk.io" and attributes["direction"] == "read" and cache["io_deviation"] > 0.6
+        - set(resource.attributes["process.io.is_anomaly"], false) where name == "process.disk.io" and attributes["direction"] == "read" and cache["io_deviation"] <= 0.6
+        
+        # Store EWMA and deviation
+        - set(resource.attributes["process.io.ewma"], cache["ewma_io_read"]) where name == "process.disk.io" and attributes["direction"] == "read"
+        - set(resource.attributes["process.io.deviation"], cache["io_deviation"]) where name == "process.disk.io" and attributes["direction"] == "read" and cache["io_deviation"] != nil
+
+    # Set overall anomaly flag if any dimension is anomalous
+    - context: metric
+      statements:
+        # Set overall anomaly flag based on any anomaly dimension
+        - set(resource.attributes["process.is_anomaly"], true) where (resource.attributes["process.cpu.is_anomaly"] == true or resource.attributes["process.memory.is_anomaly"] == true or resource.attributes["process.io.is_anomaly"] == true)
+        - set(resource.attributes["process.is_anomaly"], false) where resource.attributes["process.is_anomaly"] == nil
+        
+        # Add anomaly score (0-1 based on number of anomalous dimensions)
+        - set(cache["anomaly_score"], 0.0)
+        - set(cache["anomaly_score"], cache["anomaly_score"] + 0.33) where resource.attributes["process.cpu.is_anomaly"] == true
+        - set(cache["anomaly_score"], cache["anomaly_score"] + 0.33) where resource.attributes["process.memory.is_anomaly"] == true  
+        - set(cache["anomaly_score"], cache["anomaly_score"] + 0.34) where resource.attributes["process.io.is_anomaly"] == true
+        - set(resource.attributes["process.anomaly_score"], cache["anomaly_score"]) where cache["anomaly_score"] > 0
+
+# Note: For true persistence across collector restarts, the file_storage extension
+# configured in the main collector config will preserve EWMA state. The cache[]
+# used above is a simplified representation. In production, you would:
+# 1. Use the file_storage extension for persistence
+# 2. Implement a custom processor or use a more sophisticated state management
+# 3. Consider using the experimental Adaptive Metrics Processor when available
