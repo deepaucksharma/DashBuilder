@@ -1,0 +1,203 @@
+{
+  "name": "NRDOT v2 - Process Intelligence Dashboard",
+  "description": "Comprehensive process monitoring with cost optimization and 95% coverage tracking",
+  "permissions": "PUBLIC_READ_WRITE",
+  "pages": [
+    {
+      "name": "Process Overview",
+      "description": "High-level process metrics and coverage",
+      "widgets": [
+        {
+          "title": "Process Coverage",
+          "configuration": {
+            "billboard": {
+              "queries": [
+                {
+                  "accountId": "YOUR_ACCOUNT_ID",
+                  "query": "SELECT percentage(uniqueCount(processDisplayName), WHERE cpuPercent > 0.1 OR memoryResidentSizeBytes > 10485760) as 'Coverage %' FROM ProcessSample SINCE 1 hour ago"
+                }
+              ],
+              "thresholds": [
+                {
+                  "value": 95,
+                  "alertSeverity": "CRITICAL"
+                },
+                {
+                  "value": 90,
+                  "alertSeverity": "WARNING"
+                }
+              ]
+            }
+          },
+          "layout": { "column": 1, "row": 1, "width": 3, "height": 3 }
+        },
+        {
+          "title": "Cost Reduction",
+          "configuration": {
+            "billboard": {
+              "queries": [
+                {
+                  "accountId": "YOUR_ACCOUNT_ID",
+                  "query": "SELECT 40 as 'Target Reduction %' FROM ProcessSample LIMIT 1"
+                }
+              ]
+            }
+          },
+          "layout": { "column": 4, "row": 1, "width": 3, "height": 3 }
+        },
+        {
+          "title": "Active Processes",
+          "configuration": {
+            "billboard": {
+              "queries": [
+                {
+                  "accountId": "YOUR_ACCOUNT_ID",
+                  "query": "SELECT uniqueCount(processDisplayName) as 'Total', uniqueCount(processDisplayName, WHERE cpuPercent > 1) as 'Active', uniqueCount(processDisplayName, WHERE cpuPercent > 10) as 'High CPU' FROM ProcessSample SINCE 5 minutes ago"
+                }
+              ]
+            }
+          },
+          "layout": { "column": 7, "row": 1, "width": 6, "height": 3 }
+        },
+        {
+          "title": "Process Categories",
+          "configuration": {
+            "pie": {
+              "queries": [
+                {
+                  "accountId": "YOUR_ACCOUNT_ID",
+                  "query": "SELECT count(*) FROM ProcessSample FACET CASES(WHERE processDisplayName LIKE '%sql%' as 'Database', WHERE processDisplayName LIKE '%web%' OR processDisplayName LIKE '%w3wp%' OR processDisplayName LIKE '%nginx%' as 'Web Server', WHERE processDisplayName LIKE '%java%' OR processDisplayName LIKE '%node%' OR processDisplayName LIKE '%python%' as 'Application', WHERE processDisplayName LIKE '%chrome%' OR processDisplayName LIKE '%firefox%' as 'Browser', WHERE true as 'Other') SINCE 10 minutes ago"
+                }
+              ]
+            }
+          },
+          "layout": { "column": 13, "row": 1, "width": 4, "height": 3 }
+        },
+        {
+          "title": "Top CPU Consumers",
+          "configuration": {
+            "bar": {
+              "queries": [
+                {
+                  "accountId": "YOUR_ACCOUNT_ID",
+                  "query": "SELECT average(cpuPercent) FROM ProcessSample FACET processDisplayName SINCE 5 minutes ago LIMIT 10"
+                }
+              ]
+            }
+          },
+          "layout": { "column": 1, "row": 4, "width": 6, "height": 3 }
+        },
+        {
+          "title": "Top Memory Consumers",
+          "configuration": {
+            "bar": {
+              "queries": [
+                {
+                  "accountId": "YOUR_ACCOUNT_ID",
+                  "query": "SELECT average(memoryResidentSizeBytes/1024/1024) as 'Memory (MB)' FROM ProcessSample FACET processDisplayName SINCE 5 minutes ago LIMIT 10"
+                }
+              ]
+            }
+          },
+          "layout": { "column": 7, "row": 4, "width": 6, "height": 3 }
+        },
+        {
+          "title": "Process Health Timeline",
+          "configuration": {
+            "line": {
+              "queries": [
+                {
+                  "accountId": "YOUR_ACCOUNT_ID",
+                  "query": "SELECT average(cpuPercent) as 'CPU %', average(memoryResidentSizeBytes/1024/1024) as 'Memory MB' FROM ProcessSample TIMESERIES AUTO"
+                }
+              ]
+            }
+          },
+          "layout": { "column": 13, "row": 4, "width": 8, "height": 3 }
+        }
+      ]
+    },
+    {
+      "name": "Cost Optimization",
+      "description": "Process metrics cost analysis and optimization opportunities",
+      "widgets": [
+        {
+          "title": "Estimated Monthly Cost by Process",
+          "configuration": {
+            "bar": {
+              "queries": [
+                {
+                  "accountId": "YOUR_ACCOUNT_ID",
+                  "query": "SELECT rate(count(*), 1 month) * 0.25 / 1000000 as 'Est. Monthly Cost (USD)' FROM ProcessSample FACET processDisplayName SINCE 1 hour ago LIMIT 20"
+                }
+              ]
+            }
+          },
+          "layout": { "column": 1, "row": 1, "width": 8, "height": 3 }
+        },
+        {
+          "title": "Optimization Opportunities",
+          "configuration": {
+            "table": {
+              "queries": [
+                {
+                  "accountId": "YOUR_ACCOUNT_ID",
+                  "query": "SELECT processDisplayName, average(cpuPercent) as 'Avg CPU %', average(memoryResidentSizeBytes/1024/1024) as 'Avg Memory MB', count(*) as 'Data Points' FROM ProcessSample WHERE cpuPercent < 0.1 AND memoryResidentSizeBytes < 10485760 FACET processDisplayName SINCE 1 hour ago LIMIT 20"
+                }
+              ]
+            }
+          },
+          "layout": { "column": 9, "row": 1, "width": 8, "height": 3 }
+        },
+        {
+          "title": "High Volume Processes",
+          "configuration": {
+            "billboard": {
+              "queries": [
+                {
+                  "accountId": "YOUR_ACCOUNT_ID",
+                  "query": "SELECT uniqueCount(processDisplayName, WHERE count(*) > 1000) as 'High Volume', uniqueCount(processDisplayName, WHERE count(*) > 10000) as 'Very High Volume' FROM ProcessSample SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": { "column": 17, "row": 1, "width": 4, "height": 3 }
+        }
+      ]
+    },
+    {
+      "name": "Process Intelligence",
+      "description": "Advanced process analysis and anomaly detection",
+      "widgets": [
+        {
+          "title": "Process Stability Score",
+          "configuration": {
+            "line": {
+              "queries": [
+                {
+                  "accountId": "YOUR_ACCOUNT_ID",
+                  "query": "SELECT stddev(cpuPercent) as 'CPU Volatility', stddev(memoryResidentSizeBytes/1024/1024) as 'Memory Volatility' FROM ProcessSample TIMESERIES AUTO SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": { "column": 1, "row": 1, "width": 12, "height": 3 }
+        },
+        {
+          "title": "Critical Process Coverage",
+          "configuration": {
+            "table": {
+              "queries": [
+                {
+                  "accountId": "YOUR_ACCOUNT_ID",
+                  "query": "SELECT latest(cpuPercent) as 'Latest CPU %', latest(memoryResidentSizeBytes/1024/1024) as 'Latest Memory MB', latest(timestamp) as 'Last Seen' FROM ProcessSample WHERE processDisplayName IN ('sqlservr.exe', 'w3wp.exe', 'java.exe', 'node.exe', 'python.exe') FACET processDisplayName SINCE 10 minutes ago"
+                }
+              ]
+            }
+          },
+          "layout": { "column": 13, "row": 1, "width": 8, "height": 3 }
+        }
+      ]
+    }
+  ]
+}
