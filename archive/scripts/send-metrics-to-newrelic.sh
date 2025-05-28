@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Send metrics directly to New Relic
-API_KEY="***REMOVED***"
+# API_KEY removed for security. Set via environment variable or .env file.
+API_KEY="${NEW_RELIC_API_KEY:-REPLACE_WITH_YOUR_API_KEY}"
 ACCOUNT_ID="4430445"
 
 echo "Sending metrics to New Relic account $ACCOUNT_ID..."

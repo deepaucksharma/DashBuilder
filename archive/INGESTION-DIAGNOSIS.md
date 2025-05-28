@@ -9,8 +9,8 @@
    - Health endpoint responding correctly
 
 2. **Environment variables are set**
-   - API Key: ***REMOVED***
-   - License Key: ***REMOVED***
+   - API Key: [REDACTED]
+   - License Key: [REDACTED]
    - Account ID: 4430445
    - Region: US
 
@@ -27,8 +27,8 @@
 
 The primary issue is **invalid or expired credentials**:
 
-1. **API Key Issue**: The API key `***REMOVED***` is being rejected by the GraphQL API
-2. **License Key Issue**: The license key `***REMOVED***` is being rejected by the Metrics API
+1. **API Key Issue**: The API key `[REDACTED]` is being rejected by the GraphQL API
+2. **License Key Issue**: The license key `[REDACTED]` is being rejected by the Metrics API
 
 ## Immediate Actions Required
 
