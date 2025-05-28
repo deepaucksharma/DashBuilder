@@ -1,14 +1,14 @@
-import { Command } from 'commander';
-import fs from 'fs/promises';
-import path from 'path';
-import { DashboardService } from '../services/dashboard.service.js';
-import { Config } from '../core/config.js';
-import { Output } from '../utils/output.js';
-import { validateEntityGuid, validateDashboard } from '../utils/validators.js';
-import { logger } from '../utils/logger.js';
-import { CLIError, ValidationError, APIError, withCLIErrorHandler } from '../utils/cli-error-handler.js';
+const { Command } = require('commander');
+const fs = require('fs/promises');
+const path = require('path');
+const { DashboardService } = require('../services/dashboard.service.js');
+const { Config } = require('../core/config.js');
+const { Output } = require('../utils/output.js');
+const { validateEntityGuid, validateDashboard } = require('../utils/validators.js');
+const { logger } = require('../utils/logger.js');
+const { CLIError, ValidationError, APIError, withCLIErrorHandler } = require('../utils/cli-error-handler.js');
 
-export class DashboardCommand {
+class DashboardCommand {
   getCommand() {
     const dashboard = new Command('dashboard')
       .description('Dashboard validation, management, and optimization');
@@ -460,3 +460,7 @@ export class DashboardCommand {
     }
   }
 }
+
+module.exports = {
+  DashboardCommand
+};

@@ -26,7 +26,7 @@ jobs:
           git pull origin main
           docker-compose pull
           docker-compose up -d --force-recreate
-          docker-compose run --rm dashbuilder npm run validate:all
+          docker-compose run --rm dashbuilder npm run validate
         EOF
     
   deploy-production:
@@ -55,7 +55,7 @@ jobs:
           git checkout $VERSION
           docker-compose -f docker-compose.yml -f docker-compose.prod.yml pull
           docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate
-          docker-compose run --rm dashbuilder npm run validate:all
+          docker-compose run --rm dashbuilder npm run validate
         EOF
     
     - name: Create Release

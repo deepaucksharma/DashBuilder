@@ -1,16 +1,20 @@
-# Baseline OpenTelemetry Collector Configuration Overlay
+# Baseline OpenTelemetry Collector Configuration
 # No optimizations - collects and forwards everything
 
 receivers:
-  # Increase collection frequency for maximum coverage
+  # OTLP receiver for incoming telemetry
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  
+  # Host metrics with high frequency collection
   hostmetrics:
     collection_interval: 30s
     scrapers:
-      # Enable all scrapers with default settings
       cpu:
-        metrics:
-          system.cpu.utilization:
-            enabled: true
       disk:
       filesystem:
       memory:
@@ -20,11 +24,36 @@ receivers:
       load:
 
 processors:
-  # No filtering processors
+  # Batch processor for efficiency
+  batch:
+    timeout: 5s
+    send_batch_size: 500
+  
+  # Memory limiter to prevent OOM
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 1024
+    spike_limit_mib: 256
+  
+  # Resource processor to add metadata
+  resource:
+    attributes:
+      - key: service.name
+        value: nrdot-collector
+        action: insert
+      - key: service.version
+        value: "2.0"
+        action: insert
+      - key: nrdot.profile
+        value: baseline
+        action: insert
 
 exporters:
-  # No compression or batching optimizations
-  otlp:
+  # New Relic OTLP exporter
+  otlphttp:
+    endpoint: https://otlp.nr-data.net
+    headers:
+      api-key: ${NEW_RELIC_LICENSE_KEY}
     sending_queue:
       enabled: false
     retry_on_failure:
@@ -32,3 +61,24 @@ exporters:
       initial_interval: 1s
       max_interval: 10s
       max_elapsed_time: 3m
+  
+  # Prometheus metrics for self-monitoring
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp, hostmetrics]
+      processors: [memory_limiter, batch, resource]
+      exporters: [otlphttp, prometheus]
+  
+  extensions: [health_check, pprof, zpages]
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1777
+  zpages:
+    endpoint: 0.0.0.0:55679

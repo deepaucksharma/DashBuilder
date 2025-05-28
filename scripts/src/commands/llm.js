@@ -1,11 +1,11 @@
-import { Command } from 'commander';
-import { LLMEnhancementService } from '../services/llm-enhancement.service.js';
-import { Config } from '../core/config.js';
-import { Output } from '../utils/output.js';
-import { logger } from '../utils/logger.js';
-import fs from 'fs/promises';
+const { Command } = require('commander');
+const { LLMEnhancementService } = require('../services/llm-enhancement.service.js');
+const { Config } = require('../core/config.js');
+const { Output } = require('../utils/output.js');
+const { logger } = require('../utils/logger.js');
+const fs = require('fs/promises');
 
-export class LLMCommand {
+class LLMCommand {
   getCommand() {
     const llm = new Command('llm')
       .description('LLM-enhanced operations for intelligent dashboard and query generation');
@@ -410,3 +410,7 @@ export class LLMCommand {
     }
   }
 }
+
+module.exports = {
+  LLMCommand
+};

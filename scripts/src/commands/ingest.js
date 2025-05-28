@@ -1,12 +1,12 @@
-import { Command } from 'commander';
-import fs from 'fs/promises';
-import { IngestService } from '../services/ingest.service.js';
-import { Config } from '../core/config.js';
-import { Output } from '../utils/output.js';
-import { validateEventType, validateAttributeName } from '../utils/validators.js';
-import { logger } from '../utils/logger.js';
+const { Command } = require('commander');
+const fs = require('fs/promises');
+const { IngestService } = require('../services/ingest.service.js');
+const { Config } = require('../core/config.js');
+const { Output } = require('../utils/output.js');
+const { validateEventType, validateAttributeName } = require('../utils/validators.js');
+const { logger } = require('../utils/logger.js');
 
-export class IngestCommand {
+class IngestCommand {
   getCommand() {
     const ingest = new Command('ingest')
       .description('Data ingest and cost intelligence operations');
@@ -291,3 +291,7 @@ export class IngestCommand {
     }
   }
 }
+
+module.exports = {
+  IngestCommand
+};

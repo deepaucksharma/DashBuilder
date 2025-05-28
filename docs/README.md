@@ -1,84 +1,72 @@
-# NRDOT v2 Documentation
+# DashBuilder Documentation
 
-## Quick Start
+## Quick Links
 
-NRDOT v2 (New Relic Dot) is a process optimization system that reduces telemetry costs by 70-85% while maintaining 95%+ critical process coverage.
+- [Getting Started](../README.md) - Installation and setup
+- [Quick Start Guide](../QUICKSTART.md) - 5-minute setup
+- [Project Status](../PROJECT-STATUS.md) - Current state and roadmap
 
-### Installation
+## Core Documentation
 
-```bash
-# Quick install
-curl -Ls https://raw.githubusercontent.com/your-org/dashbuilder/main/distributions/nrdot-plus/install.sh | sudo bash
+### Architecture & Configuration
+- [Overview](01-overview.md) - System architecture and NRDOT v2 concepts
+- [Configuration](02-configuration.md) - Configuration options and profiles
+- [API Reference](api-reference.md) - CLI and API documentation
 
-# Manual install
-cd distributions/nrdot-plus
-sudo ./install.sh
-```
+### Operations
+- [Control Loop](03-control-loop.md) - Automatic optimization engine
+- [Monitoring](05-monitoring.md) - Dashboards, metrics, and alerts
+- [Deployment](06-deployment.md) - Production deployment guide
+- [Validation](07-validation.md) - Testing and validation procedures
+
+### Guides
+- [Production Setup](production-setup.md) - Production best practices
+- [Migration Guide](migration-from-v1.md) - Upgrading from NRDOT v1
+- [Troubleshooting](TROUBLESHOOTING_RUNBOOK.md) - Common issues and solutions
+- [Docker Monitoring](DOCKER-MONITORING-GUIDE.md) - Container monitoring setup
+- [Experiment Tracking](EXPERIMENT_TRACKING_GUIDE.md) - Running optimization experiments
+
+### Advanced Topics
+- [Cross-Platform Support](04-cross-platform.md) - Multi-OS deployment
+- [Advanced Scenarios](ADVANCED_SCENARIOS.md) - Complex configurations
+- [Production Update Plan](nrdot-v2-production-update-plan.md) - Rolling updates
+
+## Quick Reference
 
 ### Key Features
-
 - **Smart Process Filtering**: OS-aware classification of processes
 - **Dynamic Optimization**: Automatic profile switching based on cost/coverage
 - **EWMA Anomaly Detection**: Identifies unusual process behavior
 - **Entity Enrichment**: Meaningful names for processes (`processname@hostname`)
 
-## Documentation Structure
+### Optimization Profiles
+- **baseline**: Full telemetry (100% coverage, highest cost)
+- **conservative**: Minimal filtering (95% coverage, 30% cost reduction)
+- **balanced**: Recommended (90% coverage, 60% cost reduction)
+- **aggressive**: Maximum savings (80% coverage, 85% cost reduction)
 
-### Core Documentation
+### Essential Commands
+```bash
+# Check system status
+npm run diagnostics:all
 
-- [Overview](01-overview.md) - System architecture and concepts
-- [Configuration](02-configuration.md) - Configuration guide
-- [Control Loop](03-control-loop.md) - Automatic optimization logic
-- [Monitoring](05-monitoring.md) - Dashboards and alerts
-- [Deployment](06-deployment.md) - Production deployment guide
+# Test connections
+npm run test:connection
 
-### Operational Guides
+# Find metrics
+node scripts/find-metrics.js system
 
-- [Production Setup](production-setup.md) - Complete production configuration
-- [Troubleshooting Guide](troubleshooting-guide.md) - Common issues and solutions
-- [Validation](07-validation.md) - Testing and validation procedures
-
-### Advanced Topics
-
-- [OpenTelemetry Pipeline Deep Dive](operational-analysis/opentelemetry-pipeline-deepdive.md)
-- [NRDOT v2 Operational Reality](operational-analysis/nrdot-v2-operational-reality.md)
-- [Dashboard Queries](NRDOT-DASHBOARD-QUERIES.md) - NRQL query examples
-
-### Implementation
-
-- [Implementation Roadmap](IMPLEMENTATION_ROADMAP.md) - Development phases
-- [API Reference](api-reference.md) - CLI and API documentation
-- [Migration from v1](migration-from-v1.md) - Upgrade guide
-
-## Quick Reference
+# Run experiments
+npm run experiment:quick
+```
 
 ### Key Metrics
+| Metric | Description | Type |
+|--------|-------------|------|
+| `nrdot.processes.kept` | Processes after filtering | Gauge |
+| `nrdot.cost.estimate` | Estimated hourly cost | Gauge |
+| `nrdot.coverage.percentage` | Process coverage % | Gauge |
+| `nrdot.profile` | Current optimization profile | Attribute |
 
-| Metric | Description | Format |
-|--------|-------------|---------|
-| `nrdot_process_series_kept` | Series after filtering | Prometheus |
-| `nrdot_estimated_cost_per_hour` | Hourly cost estimate | Prometheus |
-| `nrdot.version` | NRDOT version | NRQL attribute |
-| `entity.name` | Process entity name | NRQL attribute |
-
-### Profiles
-
-- **conservative**: Maximum visibility, minimal filtering
-- **balanced**: Recommended for most use cases
-- **aggressive**: Maximum cost reduction
-
-### Control Commands
-
-```bash
-# Check status
-nrdot-plus-ctl status
-
-# Change profile
-nrdot-plus-ctl profile set balanced
-
-# View metrics
-nrdot-plus-ctl metrics
-
-# Force control loop evaluation
-nrdot-plus-ctl control force-check
-```
+## Archive
+Historical documentation and analyses are available in the [archive](archive/) directory.

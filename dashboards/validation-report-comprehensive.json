@@ -1,0 +1,23 @@
+{
+  "errors": [],
+  "warnings": [
+    "1 queries lack explicit time ranges"
+  ],
+  "info": [
+    "No dashboard variables defined",
+    "Consider using a dashboard variable for host.id = 'dashbuilder-host'"
+  ],
+  "stats": {
+    "pageCount": 2,
+    "totalWidgets": 13,
+    "totalQueries": 13,
+    "uniqueAccounts": 1,
+    "visualizationUsage": {
+      "viz.line": 6,
+      "viz.billboard": 4,
+      "viz.area": 1,
+      "viz.table": 1,
+      "viz.pie": 1
+    }
+  }
+}

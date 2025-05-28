@@ -1,14 +1,14 @@
-import { NerdGraphClient } from '../core/api-client.js';
-import { SchemaService } from './schema.service.js';
-import { Cache } from '../utils/cache.js';
-import { logger } from '../utils/logger.js';
-import { extractEventTypeFromQuery, extractAttributesFromQuery, calculateQueryComplexity } from '../utils/validators.js';
-import { ValidationError } from '../utils/errors.js';
-import fs from 'fs';
-import yaml from 'js-yaml';
-import path from 'path';
+const { NerdGraphClient } = require('../core/api-client.js');
+const { SchemaService } = require('./schema.service.js');
+const { Cache } = require('../utils/cache.js');
+const { logger } = require('../utils/logger.js');
+const { extractEventTypeFromQuery, extractAttributesFromQuery, calculateQueryComplexity } = require('../utils/validators.js');
+const { ValidationError } = require('../utils/errors.js');
+const fs = require('fs');
+const yaml = require('js-yaml');
+const path = require('path');
 
-export class IngestService {
+class IngestService {
   constructor(config) {
     this.config = config;
     this.client = new NerdGraphClient(config);
@@ -916,3 +916,7 @@ export class IngestService {
     return baseEstimate;
   }
 }
+
+module.exports = {
+  IngestService
+};

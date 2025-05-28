@@ -1,29 +1,25 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander';
-import chalk from 'chalk';
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import fs from 'fs/promises';
+const { Command } = require('commander');
+const chalk = require('chalk');
+const dotenv = require('dotenv');
+const path = require('path');
+const fs = require('fs').promises;
 
 // Module imports
-import { SchemaCommand } from './commands/schema.js';
-import { NRQLCommand } from './commands/nrql.js';
-import { DashboardCommand } from './commands/dashboard.js';
-import { EntityCommand } from './commands/entity.js';
-import { IngestCommand } from './commands/ingest.js';
-import { LLMCommand } from './commands/llm.js';
-import { ExperimentCommand } from './commands/experiment.js';
+const { SchemaCommand } = require('./commands/schema.js');
+const { NRQLCommand } = require('./commands/nrql.js');
+const { DashboardCommand } = require('./commands/dashboard.js');
+const { EntityCommand } = require('./commands/entity.js');
+const { IngestCommand } = require('./commands/ingest.js');
+const { LLMCommand } = require('./commands/llm.js');
+const { ExperimentCommand } = require('./commands/experiment.js');
 
 // Load environment variables
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 async function getVersion() {
-  const packagePath = join(__dirname, '..', 'package.json');
+  const packagePath = path.join(__dirname, '..', 'package.json');
   const packageContent = await fs.readFile(packagePath, 'utf-8');
   const packageJson = JSON.parse(packageContent);
   return packageJson.version;
@@ -54,30 +50,56 @@ async function main() {
   program.addCommand(new LLMCommand().getCommand());
   program.addCommand(new ExperimentCommand().getCommand());
 
-  // Global error handling
-  program.exitOverride();
+  // Top-level commands
+  program
+    .command('validate')
+    .description('Validate New Relic configuration and queries')
+    .action(async (options) => {
+      console.log(chalk.green('✓ New Relic Guardian is ready!'));
+      console.log(chalk.gray('Use "nr-guardian --help" to see available commands'));
+    });
 
-  try {
-    await program.parseAsync(process.argv);
-  } catch (error) {
-    if (error.code === 'commander.missingArgument') {
-      console.error(chalk.red('Error:'), error.message);
-    } else if (error.code === 'commander.unknownOption') {
-      console.error(chalk.red('Error:'), error.message);
-    } else {
-      console.error(chalk.red('Error:'), error.message || error);
-      if (program.opts().verbose) {
-        console.error(error.stack);
+  program
+    .command('test-connection')
+    .description('Test connection to New Relic API')
+    .action(async (options) => {
+      const opts = program.opts();
+      const { Config } = require('./core/config.js');
+      const { NerdGraphClient } = require('./core/api-client.js');
+      
+      try {
+        const config = new Config(opts);
+        const client = new NerdGraphClient(config);
+        const result = await client.testConnection();
+        
+        if (opts.json) {
+          console.log(JSON.stringify({ success: true, ...result }, null, 2));
+        } else {
+          console.log(chalk.green('✓ Successfully connected to New Relic API'));
+          console.log(chalk.gray(`Region: ${config.region}`));
+          console.log(chalk.gray(`Account ID: ${config.accountId}`));
+        }
+      } catch (error) {
+        if (opts.json) {
+          console.log(JSON.stringify({ success: false, error: error.message }, null, 2));
+        } else {
+          console.error(chalk.red(`✗ Connection failed: ${error.message}`));
+        }
+        process.exit(1);
       }
-    }
-    process.exit(1);
+    });
+
+  // Parse command line arguments
+  program.parse(process.argv);
+
+  // Show help if no command provided
+  if (program.args.length === 0) {
+    program.outputHelp();
   }
 }
 
-// Handle uncaught errors
-process.on('unhandledRejection', (error) => {
-  console.error(chalk.red('Unhandled error:'), error);
+// Run CLI
+main().catch(error => {
+  console.error(chalk.red(`\nFatal error: ${error.message}`));
   process.exit(1);
 });
-
-main();

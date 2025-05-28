@@ -1,6 +1,6 @@
-import { ValidationError } from '../utils/errors.js';
+const { ValidationError } = require('../utils/errors.js');
 
-export class Config {
+class Config {
   constructor(options = {}) {
     // API Configuration
     this.apiKey = options.apiKey || process.env.NEW_RELIC_API_KEY;
@@ -64,3 +64,5 @@ export class Config {
     };
   }
 }
+
+module.exports = { Config };

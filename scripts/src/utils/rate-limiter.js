@@ -1,4 +1,4 @@
-export class RateLimiter {
+class RateLimiter {
   constructor(options = {}) {
     this.maxRequests = options.maxRequests || 25;
     this.interval = options.interval || 60000; // 1 minute
@@ -51,3 +51,5 @@ export class RateLimiter {
     this.requests = [];
   }
 }
+
+module.exports = { RateLimiter };

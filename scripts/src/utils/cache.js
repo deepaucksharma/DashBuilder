@@ -1,8 +1,8 @@
-import NodeCache from 'node-cache';
-import crypto from 'crypto';
-import { logger } from './logger.js';
+const NodeCache = require('node-cache');
+const crypto = require('crypto');
+const { logger } = require('./logger.js');
 
-export class Cache {
+class Cache {
   constructor(options = {}) {
     this.enabled = options.enabled !== false;
     this.ttl = options.ttl || 3600; // 1 hour default
@@ -109,3 +109,5 @@ export class Cache {
     };
   }
 }
+
+module.exports = { Cache };

@@ -1,11 +1,18 @@
-# Balanced OpenTelemetry Collector Configuration Overlay
+# Balanced OpenTelemetry Collector Configuration
 # Balanced optimizations - good coverage with significant cost reduction
 
 receivers:
-  # Standard collection frequency
+  # OTLP receiver for incoming telemetry
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  
+  # Host metrics with standard collection frequency
   hostmetrics:
     collection_interval: 60s
-    # Selective scrapers
     scrapers:
       cpu:
         metrics:
@@ -34,9 +41,34 @@ receivers:
             enabled: true
           system.processes.created:
             enabled: false
+      load:
 
 processors:
-  # Add filter processor with balanced filtering
+  # Batch processor for efficiency
+  batch:
+    timeout: 10s
+    send_batch_size: 1000
+  
+  # Memory limiter to prevent OOM
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+  
+  # Resource processor to add metadata
+  resource:
+    attributes:
+      - key: service.name
+        value: nrdot-collector
+        action: insert
+      - key: service.version
+        value: "2.0"
+        action: insert
+      - key: nrdot.profile
+        value: balanced
+        action: insert
+  
+  # Filter processor with balanced filtering
   filter:
     metrics:
       include:
@@ -50,31 +82,31 @@ processors:
           - system\.processes\.count
           - nrdot\..*
   
-  # Balanced sampling rate
-  probabilistic_sampler:
-    sampling_percentage: 50
   
-  # Add aggregation to reduce cardinality
-  aggregate:
-    metrics:
-      - name: system.cpu.utilization
-        aggregation: average
-        dimensions:
-          - cpu
-      - name: system.memory.usage
-        aggregation: average
-      - name: system.filesystem.utilization
-        aggregation: average
-        dimensions:
-          - device
-      - name: system.network.io
-        aggregation: sum
-        dimensions:
-          - direction
-          - device
+  # Metric transform to reduce cardinality
+  metricstransform:
+    transforms:
+      - include: system.cpu.utilization
+        match_type: regexp
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [cpu]
+            aggregation_type: mean
+      - include: system.filesystem.utilization
+        match_type: regexp
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [device]
+            aggregation_type: mean
 
 exporters:
-  otlp:
+  # New Relic OTLP exporter
+  otlphttp:
+    endpoint: https://otlp.nr-data.net
+    headers:
+      api-key: ${NEW_RELIC_LICENSE_KEY}
     compression: gzip
     sending_queue:
       enabled: true
@@ -85,3 +117,34 @@ exporters:
       initial_interval: 5s
       max_interval: 30s
       max_elapsed_time: 5m
+  
+  # Debug exporter to see what's being sent
+  debug:
+    verbosity: detailed
+    
+  # Prometheus metrics for self-monitoring
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp, hostmetrics]
+      processors: [memory_limiter, batch, resource, filter, metricstransform]
+      exporters: [otlphttp, prometheus, debug]
+  
+  extensions: [health_check, pprof, zpages]
+  
+  telemetry:
+    logs:
+      level: debug
+    metrics:
+      level: detailed
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1777
+  zpages:
+    endpoint: 0.0.0.0:55679

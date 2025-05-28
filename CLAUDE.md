@@ -43,14 +43,20 @@ npm run experiment:results
 ### Development Setup
 ```bash
 # Initial setup (interactive)
-./setup.sh
-
-# Install all workspace dependencies
-npm run install:all
+npm run setup
 
 # Test New Relic API connection
 npm run test:connection
 
-# Validate entire setup
-npm run validate:all
+# Run full diagnostics
+npm run diagnostics:all
+
+# Test metric submission
+npm run test:metrics
 ```
+
+### Consolidated Tools
+- **Connection Testing**: `npm run test:connection` - Tests all New Relic endpoints
+- **Diagnostics**: `npm run diagnostics` - Full system health check
+- **Metric Finder**: `node scripts/find-metrics.js` - Explore metrics in NRDB
+- **Metric Testing**: `npm run test:metrics` - Test metric submission paths

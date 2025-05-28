@@ -1,8 +1,8 @@
-import Joi from 'joi';
-import { ValidationError } from './errors.js';
+const Joi = require('joi');
+const { ValidationError } = require('./errors.js');
 
 // Enhanced validation schemas based on NRDOT v2 insights
-export const schemas = {
+const schemas = {
   // NRQL Query validation with enhanced patterns
   nrqlQuery: Joi.string()
     .pattern(/^(SELECT|FROM|WHERE|FACET|SINCE|UNTIL|LIMIT|OFFSET|TIMESERIES|COMPARE WITH|SHOW|WITH)/i)
@@ -20,140 +20,125 @@ export const schemas = {
       'string.pattern.base': 'Event type must start with a letter and contain only alphanumeric characters and underscores'
     }),
 
-  // Enhanced attribute name validation for nested attributes
+  // Attribute name validation with nested attributes support
   attributeName: Joi.string()
     .pattern(/^[A-Za-z][A-Za-z0-9_.[\]]*$/)
     .max(255)
     .required()
     .messages({
-      'string.pattern.base': 'Attribute name must start with a letter and can contain alphanumeric characters, underscores, dots, and brackets for arrays'
+      'string.pattern.base': 'Attribute name must start with a letter and can contain alphanumeric characters, underscores, dots, and brackets'
     }),
 
-  // Enhanced dashboard structure validation with NRDOT v2 patterns
+  // Dashboard configuration validation
   dashboard: Joi.object({
-    name: Joi.string().required().max(255),
-    description: Joi.string().allow('').max(1000),
-    permissions: Joi.string().valid('PUBLIC_READ_ONLY', 'PUBLIC_READ_WRITE', 'PRIVATE'),
-    variables: Joi.array().items(
-      Joi.object({
-        name: Joi.string().required(),
-        type: Joi.string().valid('NRQL', 'STRING', 'ENUM').required(),
-        defaultValue: Joi.any(),
-        nrqlQuery: Joi.string().when('type', { is: 'NRQL', then: Joi.required() }),
-        enumOptions: Joi.array().when('type', { is: 'ENUM', then: Joi.required() })
-      })
-    ).optional(),
+    name: Joi.string().min(1).max(255).required(),
+    accountId: Joi.number().positive().required(),
+    description: Joi.string().max(1000).allow('').optional(),
+    permissions: Joi.string().valid('PUBLIC_READ_ONLY', 'PUBLIC_READ_WRITE', 'PRIVATE').default('PRIVATE'),
     pages: Joi.array().items(
       Joi.object({
-        name: Joi.string().required(),
-        description: Joi.string().allow(''),
+        name: Joi.string().min(1).max(255).required(),
         widgets: Joi.array().items(
           Joi.object({
-            title: Joi.string().required(),
-            linkedEntityGuid: Joi.string().optional(),
+            title: Joi.string().max(255).required(),
             visualization: Joi.object({
               id: Joi.string().required()
-            }),
-            configuration: Joi.object(),
-            layout: Joi.object({
-              column: Joi.number().integer().min(1).max(12).required(),
-              row: Joi.number().integer().min(1).required(),
-              width: Joi.number().integer().min(1).max(12).required(),
-              height: Joi.number().integer().min(1).required()
-            }),
-            rawConfiguration: Joi.object().optional() // For advanced widget configs
+            }).required(),
+            configuration: Joi.object().required(),
+            rawConfiguration: Joi.object({
+              nrqlQueries: Joi.array().items(
+                Joi.object({
+                  accountId: Joi.number().positive().required(),
+                  query: Joi.string().required()
+                })
+              ).min(1).required()
+            }).required()
           })
-        ).required()
+        ).min(1).required()
       })
     ).min(1).required()
   }),
 
-  // Enhanced alert condition validation
-  alertCondition: Joi.object({
-    name: Joi.string().required().max(255),
-    enabled: Joi.boolean(),
-    type: Joi.string().valid('STATIC', 'BASELINE', 'OUTLIER').default('STATIC'),
-    nrql: Joi.object({
-      query: Joi.string().required()
-    }).required(),
-    signal: Joi.object({
-      aggregationMethod: Joi.string().valid('EVENT_FLOW', 'EVENT_TIMER', 'CADENCE').optional(),
-      aggregationDelay: Joi.number().integer().min(0).optional(),
-      aggregationTimer: Joi.number().integer().min(0).optional(),
-      fillOption: Joi.string().valid('NONE', 'LAST_VALUE', 'STATIC').optional(),
-      fillValue: Joi.number().when('fillOption', { is: 'STATIC', then: Joi.required() })
-    }).optional(),
-    terms: Joi.array().items(
-      Joi.object({
-        threshold: Joi.number().required(),
-        thresholdDuration: Joi.number().integer().min(60).required(),
-        thresholdOccurrences: Joi.string().valid('ALL', 'AT_LEAST_ONCE').required(),
-        operator: Joi.string().valid('ABOVE', 'BELOW', 'EQUALS', 'NOT_EQUALS').required(),
-        priority: Joi.string().valid('CRITICAL', 'WARNING').required()
-      })
-    ).min(1).required(),
-    expiration: Joi.object({
-      expirationDuration: Joi.number().integer().min(60).optional(),
-      closeViolationsOnExpiration: Joi.boolean().optional()
-    }).optional()
+  // Time range validation with NRDOT v2 time windows
+  timeRange: Joi.object({
+    duration: Joi.alternatives().try(
+      Joi.number().positive(),
+      Joi.string().pattern(/^\d+\s*(second|minute|hour|day|week|month)s?$/i)
+    ).optional(),
+    begin: Joi.date().iso().optional(),
+    end: Joi.date().iso().optional()
+  }).or('duration', 'begin').messages({
+    'object.missing': 'Either duration or begin/end time must be specified'
   }),
 
-  // Enhanced time range validation with more formats
-  timeRange: Joi.alternatives().try(
-    // Relative time
-    Joi.string().pattern(/^\d+\s+(second|minute|hour|day|week|month)s?\s+ago$/i),
-    // Absolute time
-    Joi.string().isoDate(),
-    // Time window
-    Joi.string().pattern(/^(TODAY|YESTERDAY|THIS_WEEK|THIS_MONTH|LAST_WEEK|LAST_MONTH)$/i)
-  ).messages({
-    'alternatives.match': 'Time range must be relative (e.g., "1 hour ago"), absolute ISO date, or predefined window'
-  }),
-
-  // Account ID validation
-  accountId: Joi.alternatives().try(
-    Joi.number().integer().positive(),
-    Joi.string().pattern(/^\d+$/)
-  ).required(),
-
-  // Entity GUID validation with base64 check
-  entityGuid: Joi.string()
-    .pattern(/^[A-Za-z0-9+/]+=*$/)
-    .custom((value, helpers) => {
-      try {
-        // Validate it's proper base64
-        const decoded = Buffer.from(value, 'base64').toString();
-        if (!decoded || decoded.length === 0) {
-          return helpers.error('any.invalid');
-        }
-        return value;
-      } catch (e) {
-        return helpers.error('any.invalid');
-      }
-    })
+  // Optimization profile validation for NRDOT v2
+  optimizationProfile: Joi.string()
+    .valid('conservative', 'balanced', 'aggressive', 'custom')
     .required()
     .messages({
-      'string.pattern.base': 'Invalid entity GUID format',
-      'any.invalid': 'Entity GUID must be valid base64'
+      'any.only': 'Optimization profile must be one of: conservative, balanced, aggressive, custom'
     }),
 
-  // Process metrics validation (NRDOT v2 specific)
+  // Metric name validation for OpenTelemetry metrics
+  metricName: Joi.string()
+    .pattern(/^[A-Za-z][A-Za-z0-9._/-]*$/)
+    .max(255)
+    .required()
+    .messages({
+      'string.pattern.base': 'Metric name must follow OpenTelemetry naming conventions'
+    }),
+
+  // Process name validation
+  processName: Joi.string()
+    .min(1)
+    .max(255)
+    .required()
+    .messages({
+      'string.empty': 'Process name cannot be empty',
+      'string.max': 'Process name cannot exceed 255 characters'
+    }),
+
+  // Account ID validation
+  accountId: Joi.number()
+    .positive()
+    .integer()
+    .required()
+    .messages({
+      'number.positive': 'Account ID must be a positive number',
+      'number.integer': 'Account ID must be an integer'
+    }),
+
+  // Entity GUID validation
+  entityGuid: Joi.string()
+    .pattern(/^[A-Za-z0-9+/]+=*$/)
+    .required()
+    .messages({
+      'string.pattern.base': 'Entity GUID must be a valid base64 string'
+    }),
+
+  // API Key validation
+  apiKey: Joi.string()
+    .pattern(/^NRAK-[A-Z0-9]{27}$/)
+    .required()
+    .messages({
+      'string.pattern.base': 'API key must be in format NRAK-XXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+    }),
+
+  // Process metric validation for NRDOT v2
   processMetric: Joi.object({
     processName: Joi.string().required(),
-    processPath: Joi.string().optional(),
-    commandLine: Joi.string().optional(),
-    cpuPercent: Joi.number().min(0).max(100),
-    memoryRss: Joi.number().min(0),
-    memoryVirtual: Joi.number().min(0),
-    ioReadBytes: Joi.number().min(0).optional(),
-    ioWriteBytes: Joi.number().min(0).optional(),
+    cpuPercent: Joi.number().min(0).max(100).required(),
+    memoryRss: Joi.number().integer().min(0).required(),
+    memoryVirtual: Joi.number().integer().min(0).required(),
+    ioReadBytes: Joi.number().integer().min(0).optional(),
+    ioWriteBytes: Joi.number().integer().min(0).optional(),
     threadCount: Joi.number().integer().min(0).optional(),
     openFileDescriptors: Joi.number().integer().min(0).optional()
   })
 };
 
 // Enhanced validation helper functions
-export function validateNRQLQuery(query) {
+function validateNRQLQuery(query) {
   const { error, value } = schemas.nrqlQuery.validate(query);
   if (error) {
     throw new ValidationError(`Invalid NRQL query: ${error.message}`, error.details);
@@ -180,7 +165,7 @@ export function validateNRQLQuery(query) {
   return value;
 }
 
-export function validateEventType(eventType) {
+function validateEventType(eventType) {
   const { error, value } = schemas.eventType.validate(eventType);
   if (error) {
     throw new ValidationError(`Invalid event type: ${error.message}`, error.details);
@@ -195,88 +180,85 @@ export function validateEventType(eventType) {
   return value;
 }
 
-export function validateAttributeName(attributeName) {
+function validateAttributeName(attributeName) {
   const { error, value } = schemas.attributeName.validate(attributeName);
   if (error) {
     throw new ValidationError(`Invalid attribute name: ${error.message}`, error.details);
   }
   
-  // Check for deeply nested attributes (more than 5 levels)
-  const dots = (attributeName.match(/\./g) || []).length;
-  if (dots > 5) {
-    throw new ValidationError('Attribute nesting depth exceeds maximum of 5 levels');
+  // Check for excessive nesting
+  const nestingLevel = (attributeName.match(/\./g) || []).length;
+  if (nestingLevel > 5) {
+    throw new ValidationError('Attribute nesting cannot exceed 5 levels');
   }
   
   return value;
 }
 
-export function validateDashboard(dashboard) {
+function validateDashboard(dashboard) {
   const { error, value } = schemas.dashboard.validate(dashboard);
   if (error) {
-    throw new ValidationError(`Invalid dashboard structure: ${error.message}`, error.details);
+    throw new ValidationError(`Invalid dashboard configuration: ${error.message}`, error.details);
   }
   
-  // Additional validation for widget layouts
-  for (const page of value.pages) {
-    const occupiedCells = new Set();
-    
-    for (const widget of page.widgets) {
-      const { column, row, width, height } = widget.layout;
-      
-      // Check for overlapping widgets
-      for (let c = column; c < column + width; c++) {
-        for (let r = row; r < row + height; r++) {
-          const cell = `${c},${r}`;
-          if (occupiedCells.has(cell)) {
-            throw new ValidationError(`Widget "${widget.title}" overlaps with another widget at position ${cell}`);
-          }
-          occupiedCells.add(cell);
-        }
-      }
-    }
+  // Validate total widget count
+  const totalWidgets = value.pages.reduce((sum, page) => sum + page.widgets.length, 0);
+  if (totalWidgets > 300) {
+    throw new ValidationError('Dashboard cannot contain more than 300 widgets');
   }
+  
+  // Validate queries
+  value.pages.forEach((page, pageIndex) => {
+    page.widgets.forEach((widget, widgetIndex) => {
+      widget.rawConfiguration.nrqlQueries.forEach((nrqlQuery, queryIndex) => {
+        try {
+          validateNRQLQuery(nrqlQuery.query);
+        } catch (e) {
+          throw new ValidationError(
+            `Invalid NRQL in page ${pageIndex + 1}, widget ${widgetIndex + 1}, query ${queryIndex + 1}: ${e.message}`
+          );
+        }
+      });
+    });
+  });
   
   return value;
 }
 
-export function validateTimeRange(timeRange) {
+function validateTimeRange(timeRange) {
   const { error, value } = schemas.timeRange.validate(timeRange);
   if (error) {
     throw new ValidationError(`Invalid time range: ${error.message}`, error.details);
   }
   
-  // Validate relative time isn't too large
-  const relativeMatch = value.match(/^(\d+)\s+(second|minute|hour|day|week|month)s?\s+ago$/i);
-  if (relativeMatch) {
-    const amount = parseInt(relativeMatch[1]);
-    const unit = relativeMatch[2].toLowerCase();
+  // Validate begin/end relationship
+  if (value.begin && value.end) {
+    const begin = new Date(value.begin);
+    const end = new Date(value.end);
+    if (begin >= end) {
+      throw new ValidationError('Begin time must be before end time');
+    }
     
-    const maxValues = {
-      second: 86400,   // 1 day
-      minute: 10080,   // 1 week
-      hour: 2160,      // 90 days
-      day: 366,        // 1 year
-      week: 52,        // 1 year
-      month: 13        // 13 months
-    };
-    
-    if (amount > maxValues[unit]) {
-      throw new ValidationError(`Time range too large: ${amount} ${unit}s exceeds maximum`);
+    // Check for excessive time range
+    const rangeMs = end - begin;
+    const maxRangeMs = 90 * 24 * 60 * 60 * 1000; // 90 days
+    if (rangeMs > maxRangeMs) {
+      throw new ValidationError('Time range cannot exceed 90 days');
     }
   }
   
   return value;
 }
 
-export function validateAccountId(accountId) {
+function validateAccountId(accountId) {
   const { error, value } = schemas.accountId.validate(accountId);
   if (error) {
     throw new ValidationError(`Invalid account ID: ${error.message}`, error.details);
   }
-  return typeof value === 'string' ? parseInt(value) : value;
+  return value;
 }
 
-export function validateEntityGuid(guid) {
+function validateEntityGuid(guid) {
   const { error, value } = schemas.entityGuid.validate(guid);
   if (error) {
     throw new ValidationError(`Invalid entity GUID: ${error.message}`, error.details);
@@ -285,7 +267,7 @@ export function validateEntityGuid(guid) {
 }
 
 // Enhanced NRQL specific validators
-export function extractEventTypeFromQuery(query) {
+function extractEventTypeFromQuery(query) {
   // Handle WITH clause for CTEs
   if (query.match(/^WITH\s+/i)) {
     const mainQuery = query.match(/\)\s+SELECT.+FROM\s+([A-Za-z][A-Za-z0-9_]*)/i);
@@ -307,7 +289,7 @@ export function extractEventTypeFromQuery(query) {
   throw new ValidationError('Could not extract event type from NRQL query');
 }
 
-export function extractAttributesFromQuery(query) {
+function extractAttributesFromQuery(query) {
   const attributes = new Set();
   
   // Enhanced regex patterns for complex queries
@@ -375,7 +357,7 @@ const NRQL_FUNCTIONS = new Set([
   'keyset', 'uniques', 'percentage', 'apdex', 'bytecountestimate'
 ]);
 
-export function isValidNRQLFunction(functionName) {
+function isValidNRQLFunction(functionName) {
   return NRQL_FUNCTIONS.has(functionName.toLowerCase());
 }
 
@@ -400,12 +382,12 @@ const VALID_VISUALIZATIONS = new Set([
   'geo-map', 'node-graph', 'markdown', 'threshold'
 ]);
 
-export function isValidVisualization(vizId) {
+function isValidVisualization(vizId) {
   return VALID_VISUALIZATIONS.has(vizId.toLowerCase());
 }
 
 // Enhanced suggestion engine with context awareness
-export function suggestCorrection(input, validOptions, maxSuggestions = 3, context = null) {
+function suggestCorrection(input, validOptions, maxSuggestions = 3, context = null) {
   if (!input || !validOptions || validOptions.length === 0) {
     return [];
   }
@@ -485,7 +467,7 @@ function levenshteinDistance(a, b) {
 }
 
 // Query complexity scoring based on NRDOT v2 insights
-export function calculateQueryComplexity(query) {
+function calculateQueryComplexity(query) {
   let complexity = 0;
   const upperQuery = query.toUpperCase();
   
@@ -533,7 +515,7 @@ export function calculateQueryComplexity(query) {
 }
 
 // Validate process metrics for NRDOT v2
-export function validateProcessMetric(metric) {
+function validateProcessMetric(metric) {
   const { error, value } = schemas.processMetric.validate(metric);
   if (error) {
     throw new ValidationError(`Invalid process metric: ${error.message}`, error.details);
@@ -552,7 +534,7 @@ export function validateProcessMetric(metric) {
 }
 
 // Export all validators
-export default {
+module.exports = {
   schemas,
   validateNRQLQuery,
   validateEventType,

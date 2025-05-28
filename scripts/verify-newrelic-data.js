@@ -19,12 +19,10 @@ const config = {
 // API endpoints
 const endpoints = {
   US: {
-    graphql: 'https://api.newrelic.com/graphql',
-    nrql: 'https://insights-api.newrelic.com/v1/accounts'
+    graphql: 'https://api.newrelic.com/graphql'
   },
   EU: {
-    graphql: 'https://api.eu.newrelic.com/graphql',
-    nrql: 'https://insights-api.eu.newrelic.com/v1/accounts'
+    graphql: 'https://api.eu.newrelic.com/graphql'
   }
 };
 
@@ -87,34 +85,25 @@ const checks = {
   }
 };
 
-// Helper to make API calls
+// Helper to make NRQL queries via GraphQL
 async function queryNewRelic(nrql) {
-  return new Promise((resolve, reject) => {
-    const endpoint = `${endpoints[config.region].nrql}/${config.accountId}/query?nrql=${encodeURIComponent(nrql)}`;
-    
-    const options = {
-      headers: {
-        'X-Query-Key': config.apiKey,
-        'Accept': 'application/json'
-      }
-    };
-    
-    https.get(endpoint, options, (res) => {
-      let data = '';
-      
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-      
-      res.on('end', () => {
-        try {
-          const result = JSON.parse(data);
-          resolve(result);
-        } catch (error) {
-          reject(error);
+  const query = `{
+    actor {
+      account(id: ${config.accountId}) {
+        nrql(query: "${nrql.replace(/"/g, '\\"')}") {
+          results
         }
-      });
-    }).on('error', reject);
+      }
+    }
+  }`;
+  
+  return queryGraphQL(query).then(response => {
+    if (response.errors) {
+      throw new Error(response.errors[0].message);
+    }
+    return {
+      results: response.data?.actor?.account?.nrql?.results || []
+    };
   });
 }
 
@@ -123,9 +112,10 @@ async function queryGraphQL(query) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify({ query });
     
+    const url = new URL(endpoints[config.region].graphql);
     const options = {
-      hostname: endpoints[config.region].graphql.replace('https://', ''),
-      path: '/graphql',
+      hostname: url.hostname,
+      path: url.pathname,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -178,7 +168,16 @@ async function runVerification() {
       
       if (response.results && response.results[0]) {
         const result = response.results[0];
-        const value = result.count || result.latest || result;
+        // Extract the numeric value from various result formats
+        let value = result.count || result.latest || result.results || result;
+        
+        // If it's still an object, try to extract the first numeric value
+        if (typeof value === 'object' && !Array.isArray(value)) {
+          const keys = Object.keys(value);
+          if (keys.length > 0) {
+            value = value[keys[0]];
+          }
+        }
         
         if (check.validate(value)) {
           console.log(chalk.green('✓ PASS'));

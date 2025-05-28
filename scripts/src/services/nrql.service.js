@@ -1,18 +1,18 @@
-import { NerdGraphClient } from '../core/api-client.js';
-import { Cache } from '../utils/cache.js';
-import { logger } from '../utils/logger.js';
-import { 
+const { NerdGraphClient } = require('../core/api-client.js');
+const { Cache } = require('../utils/cache.js');
+const { logger } = require('../utils/logger.js');
+const { 
   validateNRQLQuery, 
   extractEventTypeFromQuery, 
   extractAttributesFromQuery,
   isValidNRQLFunction,
   suggestCorrection,
   calculateQueryComplexity
-} from '../utils/validators.js';
-import { NRQLError } from '../utils/errors.js';
-import { SchemaService } from './schema.service.js';
+} = require('../utils/validators.js');
+const { NRQLError } = require('../utils/errors.js');
+const { SchemaService } = require('./schema.service.js');
 
-export class NRQLService {
+class NRQLService {
   constructor(config) {
     this.config = config;
     this.client = new NerdGraphClient(config);
@@ -1102,3 +1102,7 @@ export class NRQLService {
     return examples[functionName] || `SELECT ${functionName}(${attributeName}) FROM ${eventType}`;
   }
 }
+
+module.exports = {
+  NRQLService
+};

@@ -1,8 +1,8 @@
-import { RateLimiter } from '../utils/rate-limiter.js';
-import { logger } from '../utils/logger.js';
-import { NRGuardianError, APIError, ValidationError } from '../utils/errors.js';
+const { RateLimiter } = require('../utils/rate-limiter.js');
+const { logger } = require('../utils/logger.js');
+const { NRGuardianError, APIError, ValidationError } = require('../utils/errors.js');
 
-export class NerdGraphClient {
+class NerdGraphClient {
   constructor(config) {
     this.apiKey = config.apiKey;
     this.region = config.region || 'US';
@@ -405,3 +405,5 @@ export class NerdGraphClient {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
+
+module.exports = { NerdGraphClient };

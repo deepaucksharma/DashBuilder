@@ -1,0 +1,121 @@
+extensions:
+  health_check:
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  hostmetrics:
+    collection_interval: 30s
+    # For containerized deployments, mount host filesystem and set root_path
+    root_path: /hostfs
+    scrapers:
+      cpu:
+      disk:
+      filesystem:
+      memory:
+      network:
+      paging:
+      load:
+      # Process metrics disabled by default in NRDOT
+      # processes:
+      # process:
+
+processors:
+  # Batch processor with recommended settings for New Relic
+  batch:
+    timeout: 5s
+    send_batch_size: 1000
+    send_batch_max_size: 1000
+
+  # Memory limiter to prevent OOM
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 100
+
+  # Resource processor for service identification
+  resource:
+    attributes:
+      - key: service.name
+        value: nrdot-collector
+        action: insert
+      - key: service.version
+        value: "2.0"
+        action: insert
+
+  # Resource detection for host metadata
+  resourcedetection:
+    detectors: ["system", "env", "docker"]
+    system:
+      hostname_sources: ["os"]
+      resource_attributes:
+        host.id:
+          enabled: true
+    docker:
+      resource_attributes:
+        host.name:
+          enabled: true
+        os.type:
+          enabled: true
+
+  # Transform processor to enforce New Relic attribute limits
+  transform/truncate:
+    error_mode: ignore
+    metric_statements:
+      - context: datapoint
+        statements:
+          # Truncate attribute values to 4095 characters
+          - truncate_all(attributes, 4095)
+          # Limit attribute array sizes to 64 entries
+          - limit(attributes, 64, [])
+
+exporters:
+  # New Relic OTLP HTTP exporter with all recommended settings
+  otlphttp/newrelic:
+    endpoint: https://otlp.nr-data.net
+    headers:
+      api-key: ${NEW_RELIC_LICENSE_KEY}
+    compression: gzip  # Use gzip compression (zstd not widely supported yet)
+    timeout: 30s       # Increased timeout for larger payloads
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 5m
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 1000
+
+  # Prometheus exporter for local metrics
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Debug exporter (disable in production)
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp, hostmetrics]
+      processors: [memory_limiter, batch, transform/truncate, resource, resourcedetection]
+      exporters: [otlphttp/newrelic, prometheus, debug]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888
+
+  extensions: [health_check]

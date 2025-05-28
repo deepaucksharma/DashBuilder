@@ -1,8 +1,8 @@
-import chalk from 'chalk';
-import { table } from 'table';
-import ora from 'ora';
+const chalk = require('chalk');
+const { table } = require('table');
+const ora = require('ora');
 
-export class Output {
+class Output {
   constructor(format = 'human', quiet = false) {
     this.format = format;
     this.quiet = quiet;
@@ -181,3 +181,5 @@ export class Output {
     return new Intl.NumberFormat().format(num);
   }
 }
+
+module.exports = { Output };

@@ -1,73 +1,7 @@
-# Baseline OpenTelemetry Collector Configuration
-# Full telemetry collection with New Relic export
+extensions:
+  health_check:
 
 receivers:
-  # Host metrics collection - baseline profile
-  hostmetrics:
-    collection_interval: 30s
-    scrapers:
-      cpu:
-        metrics:
-          system.cpu.utilization:
-            enabled: true
-          system.cpu.time:
-            enabled: true
-      disk:
-        metrics:
-          system.disk.io:
-            enabled: true
-          system.disk.operations:
-            enabled: true
-      filesystem:
-        metrics:
-          system.filesystem.usage:
-            enabled: true
-          system.filesystem.utilization:
-            enabled: true
-      load:
-        metrics:
-          system.cpu.load_average.1m:
-            enabled: true
-          system.cpu.load_average.5m:
-            enabled: true
-          system.cpu.load_average.15m:
-            enabled: true
-      memory:
-        metrics:
-          system.memory.usage:
-            enabled: true
-          system.memory.utilization:
-            enabled: true
-      network:
-        metrics:
-          system.network.io:
-            enabled: true
-          system.network.errors:
-            enabled: true
-          system.network.packets:
-            enabled: true
-      paging:
-        metrics:
-          system.paging.usage:
-            enabled: true
-      processes:
-        metrics:
-          system.processes.count:
-            enabled: true
-          system.processes.created:
-            enabled: true
-      process:
-        metrics:
-          process.cpu.time:
-            enabled: true
-          process.cpu.utilization:
-            enabled: true
-          process.memory.physical:
-            enabled: true
-          process.memory.virtual:
-            enabled: true
-
-  # OTLP receiver for traces and metrics
   otlp:
     protocols:
       grpc:
@@ -75,130 +9,82 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
-  # Docker stats receiver if available
-  docker_stats:
-    endpoint: unix:///var/run/docker.sock
+  hostmetrics:
     collection_interval: 30s
-    timeout: 20s
-    metrics:
-      container.cpu.percent:
-        enabled: true
-      container.memory.percent:
-        enabled: true
+    # For containerized deployments, mount host filesystem and set root_path
+    root_path: /hostfs
+    scrapers:
+      cpu:
+      disk:
+      filesystem:
+      memory:
+      network:
+      paging:
+      load:
+      # Process metrics disabled by default in NRDOT
+      # processes:
+      # process:
+      #   metrics:
+      #     process.cpu.utilization:
+      #       enabled: true
 
 processors:
-  # Memory limiter
+  batch:
+    timeout: 1s
+    send_batch_size: 1000
+
   memory_limiter:
     check_interval: 1s
     limit_mib: 512
-    spike_limit_mib: 128
 
-  # Batch processor
-  batch:
-    timeout: 10s
-    send_batch_size: 1024
-
-  # Resource detection
-  resourcedetection:
-    detectors: [env, system, docker]
-    timeout: 5s
-
-  # Add attributes
-  attributes:
-    actions:
+  resource:
+    attributes:
       - key: service.name
-        value: ${OTEL_SERVICE_NAME:-nrdot}
-        action: upsert
+        value: nrdot-collector
+        action: insert
       - key: service.version
         value: "2.0"
-        action: upsert
-      - key: nrdot.profile
-        value: baseline
-        action: upsert
-      - key: deployment.environment
-        value: ${NODE_ENV:-production}
-        action: upsert
+        action: insert
 
-  # Metrics transform for NRDOT KPIs
-  metricstransform:
-    transforms:
-      - include: system.cpu.utilization
-        match_type: strict
-        action: insert
-        new_name: nrdot.cpu.utilization
-      - include: system.memory.utilization
-        match_type: strict
-        action: insert
-        new_name: nrdot.memory.utilization
-      - include: process.cpu.utilization
-        match_type: strict
-        action: insert
-        new_name: nrdot.process.cpu.utilization
-      - include: process.memory.physical
-        match_type: strict
-        action: insert
-        new_name: nrdot.process.memory.usage
+  # Resource detection is essential for host entity creation
+  resourcedetection:
+    detectors: ["system", "env"]
+    system:
+      hostname_sources: ["os"]
+      resource_attributes:
+        host.id:
+          enabled: true
 
 exporters:
-  # New Relic OTLP exporter
-  otlp/newrelic:
-    endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-https://otlp.nr-data.net}:4317
+  # New Relic recommends otlphttp over gRPC
+  otlphttp:
+    endpoint: https://otlp.nr-data.net
     headers:
       api-key: ${NEW_RELIC_LICENSE_KEY}
     compression: gzip
-    tls:
-      insecure: false
     retry_on_failure:
       enabled: true
       initial_interval: 5s
       max_interval: 30s
       max_elapsed_time: 5m
-    sending_queue:
-      enabled: true
-      num_consumers: 10
-      queue_size: 5000
 
-  # Debug logging
-  logging:
-    loglevel: info
-    sampling_initial: 10
-    sampling_thereafter: 100
-
-extensions:
-  health_check:
-    endpoint: 0.0.0.0:13133
-    path: "/health"
-    check_collector_pipeline:
-      enabled: true
-      interval: 5m
-      exporter_failure_threshold: 5
-
-  memory_ballast:
-    size_in_percentage: 20
+  prometheus:
+    endpoint: 0.0.0.0:8889
+  
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 200
 
 service:
-  telemetry:
-    logs:
-      level: info
-      encoding: json
-    metrics:
-      level: detailed
-      address: 0.0.0.0:8888
-
-  extensions: [health_check, memory_ballast]
-  
   pipelines:
     metrics:
-      receivers: [hostmetrics, docker_stats, otlp]
-      processors: [memory_limiter, batch, resourcedetection, attributes, metricstransform]
-      exporters: [otlp/newrelic, logging]
-    
-    traces:
-      receivers: [otlp]
-      processors: [memory_limiter, batch, resourcedetection, attributes]
-      exporters: [otlp/newrelic, logging]
-    
+      receivers: [otlp, hostmetrics]
+      processors: [memory_limiter, batch, resource, resourcedetection]
+      exporters: [otlphttp, prometheus, debug]
+
+  telemetry:
     logs:
-      receivers: [otlp]
-      processors: [memory_limiter, batch, resourcedetection, attributes]
-      exporters: [otlp/newrelic, logging]
+      level: debug
+
+  extensions: [health_check]

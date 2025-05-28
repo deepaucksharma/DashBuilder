@@ -1,0 +1,266 @@
+{
+  "name": "NRDOT Experiment Results",
+  "description": "Real-time experiment tracking and profile comparison for NRDOT optimization",
+  "permissions": "PUBLIC_READ_WRITE",
+  "pages": [
+    {
+      "name": "Experiment Overview",
+      "description": "Live experiment status and results",
+      "widgets": [
+        {
+          "title": "Current Experiment Status",
+          "configuration": {
+            "table": {
+              "nrqlQueries": [
+                {
+                  "accountIds": ["${ACCOUNT_ID}"],
+                  "query": "SELECT latest(experiment.status) as 'Status', latest(experiment.profile) as 'Current Profile', latest(experiment.duration) as 'Duration (min)', latest(experiment.startTime) as 'Started' FROM NrdotExperiment SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 12,
+            "height": 2
+          }
+        },
+        {
+          "title": "Profile Comparison - Process Count",
+          "configuration": {
+            "line": {
+              "nrqlQueries": [
+                {
+                  "accountIds": ["${ACCOUNT_ID}"],
+                  "query": "SELECT average(nrdot.processCount) FROM NrdotMetrics FACET profile TIMESERIES SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 1,
+            "row": 3,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "title": "Profile Comparison - Data Points Per Minute",
+          "configuration": {
+            "line": {
+              "nrqlQueries": [
+                {
+                  "accountIds": ["${ACCOUNT_ID}"],
+                  "query": "SELECT average(nrdot.dataPointsPerMinute) FROM NrdotMetrics FACET profile TIMESERIES SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 7,
+            "row": 3,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "title": "Cost Comparison by Profile",
+          "configuration": {
+            "bar": {
+              "nrqlQueries": [
+                {
+                  "accountIds": ["${ACCOUNT_ID}"],
+                  "query": "SELECT average(nrdot.estimatedCostPerHour) as 'Cost ($/hr)' FROM NrdotMetrics FACET profile SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 1,
+            "row": 6,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "title": "Coverage Comparison by Profile",
+          "configuration": {
+            "bar": {
+              "nrqlQueries": [
+                {
+                  "accountIds": ["${ACCOUNT_ID}"],
+                  "query": "SELECT average(nrdot.processCoverage) as 'Coverage %' FROM NrdotMetrics FACET profile SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 5,
+            "row": 6,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "title": "Efficiency Score by Profile",
+          "configuration": {
+            "bar": {
+              "nrqlQueries": [
+                {
+                  "accountIds": ["${ACCOUNT_ID}"],
+                  "query": "SELECT average(nrdot.efficiencyScore) as 'Processes per Dollar' FROM NrdotMetrics FACET profile SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 9,
+            "row": 6,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "title": "Experiment Timeline",
+          "configuration": {
+            "line": {
+              "nrqlQueries": [
+                {
+                  "accountIds": ["${ACCOUNT_ID}"],
+                  "query": "SELECT latest(experiment.phase) FROM NrdotExperiment FACET experiment.id TIMESERIES SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 1,
+            "row": 9,
+            "width": 12,
+            "height": 3
+          }
+        },
+        {
+          "title": "Profile Switching Events",
+          "configuration": {
+            "event_table": {
+              "nrqlQueries": [
+                {
+                  "accountIds": ["${ACCOUNT_ID}"],
+                  "query": "SELECT timestamp, experiment.profile as 'Profile', experiment.reason as 'Reason' FROM NrdotProfileSwitch SINCE 1 hour ago LIMIT 20"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 1,
+            "row": 12,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "title": "Experiment Recommendations",
+          "configuration": {
+            "billboard": {
+              "nrqlQueries": [
+                {
+                  "accountIds": ["${ACCOUNT_ID}"],
+                  "query": "SELECT latest(experiment.recommendedProfile) as 'Recommended Profile', latest(experiment.potentialSavings) as 'Potential Savings %', latest(experiment.confidenceScore) as 'Confidence' FROM NrdotExperimentResult SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 7,
+            "row": 12,
+            "width": 6,
+            "height": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "Detailed Metrics",
+      "description": "Deep dive into experiment metrics",
+      "widgets": [
+        {
+          "title": "Process Distribution by Profile",
+          "configuration": {
+            "heatmap": {
+              "nrqlQueries": [
+                {
+                  "accountIds": ["${ACCOUNT_ID}"],
+                  "query": "SELECT histogram(processCount, 10, 20) FROM ProcessSample FACET profile SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 12,
+            "height": 4
+          }
+        },
+        {
+          "title": "Memory Usage by Profile",
+          "configuration": {
+            "line": {
+              "nrqlQueries": [
+                {
+                  "accountIds": ["${ACCOUNT_ID}"],
+                  "query": "SELECT average(memoryUsage) FROM ProcessSample FACET profile TIMESERIES SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 1,
+            "row": 5,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "title": "CPU Usage by Profile",
+          "configuration": {
+            "line": {
+              "nrqlQueries": [
+                {
+                  "accountIds": ["${ACCOUNT_ID}"],
+                  "query": "SELECT average(cpuPercent) FROM ProcessSample FACET profile TIMESERIES SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 7,
+            "row": 5,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "title": "Critical Process Coverage",
+          "configuration": {
+            "area": {
+              "nrqlQueries": [
+                {
+                  "accountIds": ["${ACCOUNT_ID}"],
+                  "query": "SELECT average(nrdot.criticalProcessCoverage) FROM NrdotMetrics FACET profile TIMESERIES SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 1,
+            "row": 8,
+            "width": 12,
+            "height": 3
+          }
+        }
+      ]
+    }
+  ]
+}

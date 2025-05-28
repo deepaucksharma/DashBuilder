@@ -1,10 +1,10 @@
-import { NerdGraphClient } from '../core/api-client.js';
-import { Cache } from '../utils/cache.js';
-import { logger } from '../utils/logger.js';
-import { suggestCorrection, calculateQueryComplexity } from '../utils/validators.js';
-import { SchemaError } from '../utils/errors.js';
+const { NerdGraphClient } = require('../core/api-client.js');
+const { Cache } = require('../utils/cache.js');
+const { logger } = require('../utils/logger.js');
+const { suggestCorrection, calculateQueryComplexity } = require('../utils/validators.js');
+const { SchemaError } = require('../utils/errors.js');
 
-export class SchemaService {
+class SchemaService {
   constructor(config) {
     this.config = config;
     this.client = new NerdGraphClient(config);
@@ -722,3 +722,7 @@ export class SchemaService {
     return sorted[Math.max(0, index)];
   }
 }
+
+module.exports = {
+  SchemaService
+};

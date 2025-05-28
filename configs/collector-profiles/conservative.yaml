@@ -1,39 +1,73 @@
-# Conservative OpenTelemetry Collector Configuration Overlay
-# Moderate optimizations - maintains high coverage with some cost reduction
+extensions:
+  health_check:
 
 receivers:
-  # Moderate collection frequency
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
   hostmetrics:
-    collection_interval: 60s
+    collection_interval: 60s  # Reduced frequency (conservative)
+    root_path: /hostfs
+    scrapers:
+      cpu:
+      disk:
+      filesystem:
+      memory:
+      network:
+      load:
+      paging:
 
 processors:
-  # Add filter processor for basic filtering
-  filter:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - .*cpu.*
-          - .*memory.*
-          - .*disk.*
-          - .*network.*
-          - .*process.*
-          - system\..*
-          - nrdot\..*
-  
-  # Moderate sampling rate
-  probabilistic_sampler:
-    sampling_percentage: 80
+  batch:
+    timeout: 10s  # Larger batches
+    send_batch_size: 2000
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+
+  resource:
+    attributes:
+      - key: service.name
+        value: nrdot-collector-conservative
+        action: insert
+      - key: optimization.profile
+        value: conservative
+        action: insert
+
+  resourcedetection:
+    detectors: ["system", "env"]
+    system:
+      hostname_sources: ["os"]
 
 exporters:
-  otlp:
+  otlphttp:
+    endpoint: https://otlp.nr-data.net
+    headers:
+      api-key: ${NEW_RELIC_LICENSE_KEY}
     compression: gzip
-    sending_queue:
-      enabled: true
-      num_consumers: 2
-      queue_size: 500
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 5m
+
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp, hostmetrics]
+      processors: [memory_limiter, batch, resource, resourcedetection]
+      exporters: [otlphttp, prometheus, debug]
+
+  telemetry:
+    logs:
+      level: info
+
+  extensions: [health_check]

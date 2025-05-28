@@ -1,0 +1,55 @@
+# Working OpenTelemetry Collector config for New Relic
+
+receivers:
+  hostmetrics:
+    collection_interval: 30s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      filesystem:
+      load:
+      network:
+      paging:
+      processes:
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1000
+  
+  resource:
+    attributes:
+      - key: service.name
+        value: nrdot-collector
+        action: upsert
+      - key: collector.name
+        value: otelcol-contrib
+        action: upsert
+
+exporters:
+  otlphttp:
+    endpoint: https://otlp.nr-data.net
+    headers:
+      api-key: ${NEW_RELIC_LICENSE_KEY}
+    compression: gzip
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+  
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      processors: [batch, resource]
+      exporters: [otlphttp, prometheus]
+  
+  extensions: [health_check]
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133

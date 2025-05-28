@@ -3,10 +3,10 @@
  * Provides centralized error handling for CLI commands
  */
 
-import chalk from 'chalk';
-import { logger } from './logger.js';
+const chalk = require('chalk');
+const { logger } = require('./logger.js');
 
-export class CLIError extends Error {
+class CLIError extends Error {
   constructor(message, code = 1, details = null) {
     super(message);
     this.name = 'CLIError';
@@ -15,21 +15,21 @@ export class CLIError extends Error {
   }
 }
 
-export class ValidationError extends CLIError {
+class ValidationError extends CLIError {
   constructor(message, details = null) {
     super(message, 2, details);
     this.name = 'ValidationError';
   }
 }
 
-export class APIError extends CLIError {
+class APIError extends CLIError {
   constructor(message, details = null) {
     super(message, 3, details);
     this.name = 'APIError';
   }
 }
 
-export class ConfigError extends CLIError {
+class ConfigError extends CLIError {
   constructor(message, details = null) {
     super(message, 4, details);
     this.name = 'ConfigError';
@@ -41,7 +41,7 @@ export class ConfigError extends CLIError {
  * @param {Error} error - The error to handle
  * @param {Object} options - Options for error handling
  */
-export function handleCLIError(error, options = {}) {
+function handleCLIError(error, options = {}) {
   const { verbose = false, exitOnError = true } = options;
   
   // Log error details
@@ -80,7 +80,7 @@ export function handleCLIError(error, options = {}) {
  * @param {Function} fn - The async function to wrap
  * @returns {Function} - The wrapped function
  */
-export function withCLIErrorHandler(fn) {
+function withCLIErrorHandler(fn) {
   return async (...args) => {
     try {
       return await fn(...args);
@@ -95,7 +95,7 @@ export function withCLIErrorHandler(fn) {
  * @param {Object} response - API response
  * @returns {APIError} - API error instance
  */
-export function createAPIError(response) {
+function createAPIError(response) {
   const message = response.error || response.message || 'API request failed';
   const details = {
     status: response.status,
@@ -105,3 +105,13 @@ export function createAPIError(response) {
   
   return new APIError(message, details);
 }
+
+module.exports = {
+  CLIError,
+  ValidationError,
+  APIError,
+  ConfigError,
+  handleCLIError,
+  withCLIErrorHandler,
+  createAPIError
+};

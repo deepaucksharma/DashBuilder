@@ -10,7 +10,7 @@
     "bundle-size": "size-limit"
   },
   "nr1": {
-    "uuid": "YOUR-UUID-HERE"
+    "uuid": "7bc3af02-51fa-4ff3-874c-9f3c80985a54"
   },
   "dependencies": {
     "react": "^17.0.2",

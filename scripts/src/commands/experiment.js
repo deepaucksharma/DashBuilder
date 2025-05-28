@@ -1,17 +1,17 @@
-import { Command } from 'commander';
-import fs from 'fs/promises';
-import path from 'path';
-import chalk from 'chalk';
-import ora from 'ora';
-import yaml from 'js-yaml';
-import { table } from 'table';
-import { Config } from '../core/config.js';
-import { Output } from '../utils/output.js';
-import { logger } from '../utils/logger.js';
-import { withCLIErrorHandler, CLIError } from '../utils/cli-error-handler.js';
-import { ExperimentOrchestrator } from '../../../experiments/orchestrator/experiment-orchestrator.js';
+const { Command } = require('commander');
+const fs = require('fs/promises');
+const path = require('path');
+const chalk = require('chalk');
+const ora = require('ora');
+const yaml = require('js-yaml');
+const { table } = require('table');
+const { Config } = require('../core/config.js');
+const { Output } = require('../utils/output.js');
+const { logger } = require('../utils/logger.js');
+const { withCLIErrorHandler, CLIError } = require('../utils/cli-error-handler.js');
+const { ExperimentOrchestrator } = require('../../../experiments/orchestrator/experiment-orchestrator.js');
 
-export class ExperimentCommand {
+class ExperimentCommand {
   getCommand() {
     const experiment = new Command('experiment')
       .description('Run and manage NRDOT configuration experiments');
@@ -722,3 +722,7 @@ export class ExperimentCommand {
     }
   }
 }
+
+module.exports = {
+  ExperimentCommand
+};

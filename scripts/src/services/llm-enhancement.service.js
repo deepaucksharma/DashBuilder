@@ -1,13 +1,13 @@
-import { SchemaService } from './schema.service.js';
-import { NRQLService } from './nrql.service.js';
-import { DashboardService } from './dashboard.service.js';
-import { logger } from '../utils/logger.js';
+const { SchemaService } = require('./schema.service.js');
+const { NRQLService } = require('./nrql.service.js');
+const { DashboardService } = require('./dashboard.service.js');
+const { logger } = require('../utils/logger.js');
 
 /**
  * LLM Enhancement Service
  * Provides intelligent context and validation for LLM-based operations
  */
-export class LLMEnhancementService {
+class LLMEnhancementService {
   constructor(config) {
     this.config = config;
     this.schemaService = new SchemaService(config);
@@ -631,3 +631,7 @@ export class LLMEnhancementService {
       .map(d => d.option);
   }
 }
+
+module.exports = {
+  LLMEnhancementService
+};

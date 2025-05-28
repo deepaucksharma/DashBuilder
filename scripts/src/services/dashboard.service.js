@@ -1,12 +1,12 @@
-import { NerdGraphClient } from '../core/api-client.js';
-import { NRQLService } from './nrql.service.js';
-import { SchemaService } from './schema.service.js';
-import { Cache } from '../utils/cache.js';
-import { logger } from '../utils/logger.js';
-import { validateDashboard, isValidVisualization, extractAttributesFromQuery, calculateQueryComplexity } from '../utils/validators.js';
-import { ValidationError } from '../utils/errors.js';
+const { NerdGraphClient } = require('../core/api-client.js');
+const { NRQLService } = require('./nrql.service.js');
+const { SchemaService } = require('./schema.service.js');
+const { Cache } = require('../utils/cache.js');
+const { logger } = require('../utils/logger.js');
+const { validateDashboard, isValidVisualization, extractAttributesFromQuery, calculateQueryComplexity } = require('../utils/validators.js');
+const { ValidationError } = require('../utils/errors.js');
 
-export class DashboardService {
+class DashboardService {
   constructor(config) {
     this.config = config;
     this.client = new NerdGraphClient(config);
@@ -974,3 +974,7 @@ export class DashboardService {
     };
   }
 }
+
+module.exports = {
+  DashboardService
+};

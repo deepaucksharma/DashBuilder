@@ -1,4 +1,4 @@
-version: '3.8'
+# version: '3.8' # Removed as it's deprecated
 
 # DashBuilder + NRDOT v2 Integrated Stack
 # Single unified solution for telemetry optimization and dashboard management
@@ -45,25 +45,43 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: nrdot-collector
-    command: ["--config=/etc/otel-collector.yaml"]
+    command: ["--config=/etc/otel/collector-nrdot.yaml"]
     volumes:
-      - ./configs/collector-baseline.yaml:/etc/otel-collector.yaml:ro
-      - ./configs/collector-profiles:/etc/collector-profiles:ro
-      - ./configs/optimization.yaml:/etc/optimization.yaml:ro
+      - ./configs/collector-nrdot.yaml:/etc/otel/collector-nrdot.yaml:ro
+      - ./configs/collector-profiles:/etc/otel/collector-profiles:ro
+      - /:/hostfs:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
+      # New Relic OTLP endpoint configuration
       - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
-      - NRDOT_PROFILE=${NRDOT_PROFILE:-balanced}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.nr-data.net
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_EXPORTER_OTLP_HEADERS=api-key=${NEW_RELIC_LICENSE_KEY}
+      - OTEL_EXPORTER_OTLP_INSECURE=false
+      - OTEL_EXPORTER_OTLP_COMPRESSION=gzip
+      - OTEL_EXPORTER_OTLP_TIMEOUT=30000
+      # Attribute limits
+      - OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT=4095
+      - OTEL_ATTRIBUTE_COUNT_LIMIT=64
+      # Metric configuration
+      - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
+      - OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION=base2_exponential_bucket_histogram
+      # Resource attributes
+      - OTEL_RESOURCE_ATTRIBUTES=host.id=dashbuilder-host,service.name=nrdot-collector,deployment.environment=production
+      # Retry configuration
+      - OTEL_EXPERIMENTAL_EXPORTER_OTLP_RETRY_ENABLED=true
     ports:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
-      - "8888:8888"   # Prometheus metrics
+      - "8889:8889"   # Prometheus metrics
       - "13133:13133" # Health check
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:13133/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD", "/otelcol-contrib", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
     networks:
       - dashbuilder-net
     depends_on:
@@ -75,19 +93,27 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: nrdot-control-loop
-    command: npm run control-loop
+    command: ["control-loop"]
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_USER_API_KEY=${NEW_RELIC_USER_API_KEY}
+      - NEW_RELIC_QUERY_KEY=${NEW_RELIC_QUERY_KEY}
       - NEW_RELIC_ACCOUNT_ID=${NEW_RELIC_ACCOUNT_ID}
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY}
       - REDIS_URL=redis://redis:6379
-      - NRDOT_CONTROL_LOOP_INTERVAL=${NRDOT_CONTROL_LOOP_INTERVAL:-60}
+      - CONTROL_LOOP_INTERVAL=${CONTROL_LOOP_INTERVAL:-300000}
+      - OPTIMIZATION_PROFILE=${OPTIMIZATION_PROFILE:-balanced}
+      - RUNNING_IN_DOCKER=true
     volumes:
       - ./scripts:/app/scripts:ro
-      - ./configs:/app/configs:rw
+      - ./configs:/app/configs:ro
+      - /var/lib/nrdot:/var/lib/nrdot:rw
     depends_on:
-      - redis
-      - otel-collector
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - dashbuilder-net
@@ -98,16 +124,19 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: dashbuilder-app
+    command: ["monitor"]
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY}
       - NEW_RELIC_ACCOUNT_ID=${NEW_RELIC_ACCOUNT_ID}
       - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_USER_API_KEY=${NEW_RELIC_USER_API_KEY}
+      - NEW_RELIC_QUERY_KEY=${NEW_RELIC_QUERY_KEY}
       - NEW_RELIC_REGION=${NEW_RELIC_REGION:-US}
       - DATABASE_URL=postgres://dashbuilder:postgres@postgres:5432/dashbuilder
       - REDIS_URL=redis://redis:6379
-      - APP_PORT=3000
-      - API_PORT=8080
+      - APP_PORT=8080
+      - UI_PORT=3000
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - ./orchestrator:/app/orchestrator:ro
@@ -116,7 +145,7 @@ services:
       - ./dashboards:/app/dashboards:rw
     ports:
       - "3000:3000"  # Dashboard UI
-      - "8080:8080"  # API
+      - "8081:8080"  # API (changed from 8080 to avoid conflict)
     depends_on:
       postgres:
         condition: service_healthy
@@ -138,7 +167,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: nrdot-metrics-generator
-    command: node scripts/metrics-generator-fixed.js
+    command: ["node", "scripts/visualize-experiments.js", "--generate-metrics"]
     environment:
       - NODE_ENV=development
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
@@ -155,7 +184,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: nrdot-experiments
-    command: npm run experiment:run
+    command: ["node", "scripts/core/experiment-orchestrator.js", "experiments/profiles/cost-optimization-basic.yaml"]
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}

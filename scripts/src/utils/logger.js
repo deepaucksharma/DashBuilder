@@ -1,5 +1,5 @@
-import winston from 'winston';
-import chalk from 'chalk';
+const winston = require('winston');
+const chalk = require('chalk');
 
 const customLevels = {
   levels: {
@@ -48,7 +48,7 @@ const jsonFormat = winston.format.combine(
 );
 
 // Create logger instance
-export const logger = winston.createLogger({
+const logger = winston.createLogger({
   levels: customLevels.levels,
   level: process.env.NR_GUARDIAN_LOG_LEVEL || 'info',
   format: jsonFormat,
@@ -63,11 +63,11 @@ export const logger = winston.createLogger({
 winston.addColors(customLevels.colors);
 
 // Helper functions for structured logging
-export function logSuccess(message, data = {}) {
+function logSuccess(message, data = {}) {
   logger.info(chalk.green('✓ ') + message, data);
 }
 
-export function logError(message, error = null) {
+function logError(message, error = null) {
   const errorData = error ? {
     error: error.message,
     stack: error.stack,
@@ -77,19 +77,19 @@ export function logError(message, error = null) {
   logger.error(chalk.red('✗ ') + message, errorData);
 }
 
-export function logWarning(message, data = {}) {
+function logWarning(message, data = {}) {
   logger.warn(chalk.yellow('⚠ ') + message, data);
 }
 
-export function logDebug(message, data = {}) {
+function logDebug(message, data = {}) {
   logger.debug(message, data);
 }
 
-export function setLogLevel(level) {
+function setLogLevel(level) {
   logger.level = level;
 }
 
-export function setOutputFormat(format) {
+function setOutputFormat(format) {
   if (format === 'json') {
     logger.transports[0].format = jsonFormat;
     process.env.NR_GUARDIAN_OUTPUT_JSON = 'true';
@@ -98,3 +98,13 @@ export function setOutputFormat(format) {
     process.env.NR_GUARDIAN_OUTPUT_JSON = 'false';
   }
 }
+
+module.exports = {
+  logger,
+  logSuccess,
+  logError,
+  logWarning,
+  logDebug,
+  setLogLevel,
+  setOutputFormat
+};

@@ -1,0 +1,93 @@
+extensions:
+  health_check:
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  hostmetrics:
+    collection_interval: 30s
+    # For containerized deployments, mount host filesystem and set root_path
+    root_path: /hostfs
+    scrapers:
+      cpu:
+      disk:
+      filesystem:
+      memory:
+      network:
+      paging:
+      load:
+      # Process metrics disabled by default in NRDOT
+      # processes:
+      # process:
+      #   metrics:
+      #     process.cpu.utilization:
+      #       enabled: true
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1000
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+
+  resource:
+    attributes:
+      - key: service.name
+        value: nrdot-collector
+        action: insert
+      - key: service.version
+        value: "2.0"
+        action: insert
+      - key: nrdot.profile
+        value: ${env:OPTIMIZATION_PROFILE:-balanced}
+        action: insert
+
+  # Resource detection is essential for host entity creation
+  resourcedetection:
+    detectors: ["system", "env"]
+    system:
+      hostname_sources: ["os"]
+      resource_attributes:
+        host.id:
+          enabled: true
+
+exporters:
+  # New Relic recommends otlphttp over gRPC
+  otlphttp:
+    endpoint: https://otlp.nr-data.net
+    headers:
+      api-key: ${NEW_RELIC_LICENSE_KEY}
+    compression: gzip
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 5m
+
+  prometheus:
+    endpoint: 0.0.0.0:8889
+  
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp, hostmetrics]
+      processors: [memory_limiter, batch, resource, resourcedetection]
+      exporters: [otlphttp, prometheus, debug]
+
+  telemetry:
+    logs:
+      level: debug
+
+  extensions: [health_check]

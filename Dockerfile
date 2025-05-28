@@ -1,61 +1,96 @@
-# Multi-stage Dockerfile for DashBuilder with NRDOT v2 integration
+# Best Practices NRDOT + DashBuilder Dockerfile
+# Multi-stage build for optimized layers and security
 
-# Base stage with common dependencies
-FROM node:18-alpine AS base
-RUN apk add --no-cache bash git curl python3 make g++ ca-certificates
-WORKDIR /app
+# Stage 1: Base dependencies
+FROM node:20-alpine AS base
+RUN apk add --no-cache \
+    ca-certificates \
+    curl \
+    bash \
+    && rm -rf /var/cache/apk/*
 
-# Dependencies stage
-FROM base AS deps
+# Stage 2: Builder for Node.js dependencies
+FROM base AS node-builder
+WORKDIR /build
+# Copy package files first for better caching
 COPY package*.json ./
 COPY scripts/package*.json ./scripts/
+COPY orchestrator/package*.json ./orchestrator/
 COPY nrdot-nr1-app/package*.json ./nrdot-nr1-app/
-RUN npm ci --legacy-peer-deps && \
-    cd scripts && npm ci --legacy-peer-deps && \
-    cd ../nrdot-nr1-app && npm ci --legacy-peer-deps
+# Skip automation as it's excluded in .dockerignore
 
-# OTEL Collector stage
-FROM otel/opentelemetry-collector-contrib:0.91.0 AS otel-collector
+# Install dependencies with clean install
+RUN npm ci --only=production && \
+    mkdir -p scripts && cd scripts && npm ci --only=production || true && cd .. && \
+    mkdir -p orchestrator && cd orchestrator && npm ci --only=production || true && cd ..
 
-# Development stage
-FROM base AS development
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/scripts/node_modules ./scripts/node_modules
-COPY --from=deps /app/nrdot-nr1-app/node_modules ./nrdot-nr1-app/node_modules
-COPY . .
-RUN find . -name "*.sh" -type f -exec chmod +x {} \;
-ENV NODE_ENV=development
-CMD ["npm", "run", "dev"]
+# Stage 3: OpenTelemetry Collector binary
+FROM alpine:3.19 AS otel-builder
+ARG OTEL_VERSION=0.96.0
+RUN apk add --no-cache curl && \
+    curl -L https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTEL_VERSION}/otelcol-contrib_${OTEL_VERSION}_linux_amd64.tar.gz | \
+    tar -xz -C /tmp && \
+    chmod +x /tmp/otelcol-contrib && \
+    mv /tmp/otelcol-contrib /usr/local/bin/
 
-# Production build stage
-FROM base AS builder
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/scripts/node_modules ./scripts/node_modules
-COPY --from=deps /app/nrdot-nr1-app/node_modules ./nrdot-nr1-app/node_modules
-COPY . .
-RUN npm run build --if-present && \
-    cd nrdot-nr1-app && npm run build --if-present
+# Stage 4: Production image
+FROM alpine:3.19
+LABEL maintainer="DashBuilder Team"
+LABEL description="NRDOT v2 with DashBuilder - Production Ready"
 
-# Production stage
-FROM base AS production
-RUN apk add --no-cache tini
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/scripts/node_modules ./scripts/node_modules
-COPY --from=builder /app/nrdot-nr1-app/node_modules ./nrdot-nr1-app/node_modules
-COPY --from=builder /app .
-RUN find . -name "*.sh" -type f -exec chmod +x {} \;
-ENV NODE_ENV=production
-EXPOSE 3000
-ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "orchestrator/monitor-enhanced.js"]
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    curl \
+    bash \
+    nodejs \
+    npm \
+    tini \
+    && rm -rf /var/cache/apk/*
 
-# NRDOT stage with OTEL collector
-FROM alpine:3.19 AS nrdot
-RUN apk add --no-cache bash curl jq bc procps nodejs npm
-COPY --from=otel-collector /otelcol-contrib /usr/local/bin/otelcol-contrib
-COPY --from=production /app/configs/collector-profiles /etc/otel/profiles
-COPY --from=production /app/scripts/control-loop.sh /usr/local/bin/
-COPY --from=production /app/nrdot-config /etc/nrdot
-RUN chmod +x /usr/local/bin/control-loop.sh
-ENV OTEL_RESOURCE_ATTRIBUTES="service.name=nrdot-collector,service.version=2.0"
-CMD ["/usr/local/bin/otelcol-contrib", "--config=/etc/otel/profiles/balanced.yaml"]
+# Create non-root user
+RUN addgroup -g 1001 nrdot && \
+    adduser -D -u 1001 -G nrdot nrdot
+
+# Set up directory structure
+RUN mkdir -p \
+    /app \
+    /etc/otel \
+    /etc/otel/profiles \
+    /var/lib/nrdot \
+    /var/log/nrdot \
+    /tmp/nrdot \
+    && chown -R nrdot:nrdot /app /etc/otel /var/lib/nrdot /var/log/nrdot /tmp/nrdot
+
+# Copy OTEL collector binary
+COPY --from=otel-builder /usr/local/bin/otelcol-contrib /usr/local/bin/otelcol-contrib
+
+# Copy application files
+WORKDIR /app
+COPY --chown=nrdot:nrdot . .
+
+# Copy node modules from builder (if they exist)
+COPY --from=node-builder --chown=nrdot:nrdot /build/node_modules ./node_modules
+RUN if [ -d /build/scripts/node_modules ]; then cp -r /build/scripts/node_modules ./scripts/; fi || true
+RUN if [ -d /build/orchestrator/node_modules ]; then cp -r /build/orchestrator/node_modules ./orchestrator/; fi || true
+
+# Copy configuration files
+COPY --chown=nrdot:nrdot configs/collector-profiles/*.yaml /etc/otel/profiles/
+COPY --chown=nrdot:nrdot deployment/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Switch to non-root user
+USER nrdot
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:13133/health || exit 1
+
+# Expose ports
+EXPOSE 4317 4318 8888 8889 13133 8090
+
+# Use tini for proper signal handling
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
+
+# Default command
+CMD ["collector"]

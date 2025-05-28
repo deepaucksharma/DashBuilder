@@ -1,4 +1,4 @@
-export class NRGuardianError extends Error {
+class NRGuardianError extends Error {
   constructor(message, code) {
     super(message);
     this.name = 'NRGuardianError';
@@ -6,7 +6,7 @@ export class NRGuardianError extends Error {
   }
 }
 
-export class ValidationError extends NRGuardianError {
+class ValidationError extends NRGuardianError {
   constructor(message, details = null) {
     super(message, 'VALIDATION_ERROR');
     this.name = 'ValidationError';
@@ -14,7 +14,7 @@ export class ValidationError extends NRGuardianError {
   }
 }
 
-export class APIError extends NRGuardianError {
+class APIError extends NRGuardianError {
   constructor(message, statusCode, details = null) {
     super(message, 'API_ERROR');
     this.name = 'APIError';
@@ -23,14 +23,14 @@ export class APIError extends NRGuardianError {
   }
 }
 
-export class ConfigError extends NRGuardianError {
+class ConfigError extends NRGuardianError {
   constructor(message) {
     super(message, 'CONFIG_ERROR');
     this.name = 'ConfigError';
   }
 }
 
-export class SchemaError extends NRGuardianError {
+class SchemaError extends NRGuardianError {
   constructor(message, details = null) {
     super(message, 'SCHEMA_ERROR');
     this.name = 'SchemaError';
@@ -38,7 +38,7 @@ export class SchemaError extends NRGuardianError {
   }
 }
 
-export class NRQLError extends NRGuardianError {
+class NRQLError extends NRGuardianError {
   constructor(message, query, suggestions = []) {
     super(message, 'NRQL_ERROR');
     this.name = 'NRQLError';
@@ -46,3 +46,12 @@ export class NRQLError extends NRGuardianError {
     this.suggestions = suggestions;
   }
 }
+
+module.exports = {
+  NRGuardianError,
+  ValidationError,
+  APIError,
+  ConfigError,
+  SchemaError,
+  NRQLError
+};

@@ -1,11 +1,11 @@
-import { Command } from 'commander';
-import { EntityService } from '../services/entity.service.js';
-import { Config } from '../core/config.js';
-import { Output } from '../utils/output.js';
-import { validateEntityGuid } from '../utils/validators.js';
-import { logger } from '../utils/logger.js';
+const { Command } = require('commander');
+const { EntityService } = require('../services/entity.service.js');
+const { Config } = require('../core/config.js');
+const { Output } = require('../utils/output.js');
+const { validateEntityGuid } = require('../utils/validators.js');
+const { logger } = require('../utils/logger.js');
 
-export class EntityCommand {
+class EntityCommand {
   getCommand() {
     const entity = new Command('entity')
       .description('Entity and relationship intelligence operations');
@@ -241,3 +241,7 @@ export class EntityCommand {
     }
   }
 }
+
+module.exports = {
+  EntityCommand
+};

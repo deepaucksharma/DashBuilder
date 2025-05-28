@@ -1,11 +1,11 @@
-import { Command } from 'commander';
-import { SchemaService } from '../services/schema.service.js';
-import { Config } from '../core/config.js';
-import { Output } from '../utils/output.js';
-import { validateEventType, validateAttributeName, validateTimeRange } from '../utils/validators.js';
-import { logger } from '../utils/logger.js';
+const { Command } = require('commander');
+const { SchemaService } = require('../services/schema.service.js');
+const { Config } = require('../core/config.js');
+const { Output } = require('../utils/output.js');
+const { validateEventType, validateAttributeName, validateTimeRange } = require('../utils/validators.js');
+const { logger } = require('../utils/logger.js');
 
-export class SchemaCommand {
+class SchemaCommand {
   getCommand() {
     const schema = new Command('schema')
       .description('Schema intelligence and discovery operations')
@@ -256,3 +256,7 @@ export class SchemaCommand {
     }
   }
 }
+
+module.exports = {
+  SchemaCommand
+};

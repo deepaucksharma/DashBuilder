@@ -59,16 +59,20 @@ Thumbs.db
 dist/
 build/
 *.tgz
+otelcol-contrib
+otelcol*
 
 # Test coverage
 coverage/
 .nyc_output/
 
-# Automation specific
-automation/config/*.json
-automation/screenshots/
-automation/reports/
-automation/exports/
+# Experiment results
+experiment-results/
+!experiment-results/.gitkeep
+
+# Archive directories
+**/archive/
+!**/archive/.gitkeep
 
 # NR1 app specific
 nrdot-nr1-app/dist/

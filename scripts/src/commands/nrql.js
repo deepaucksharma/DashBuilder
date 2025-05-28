@@ -1,12 +1,12 @@
-import { Command } from 'commander';
-import fs from 'fs/promises';
-import { NRQLService } from '../services/nrql.service.js';
-import { Config } from '../core/config.js';
-import { Output } from '../utils/output.js';
-import { validateNRQLQuery } from '../utils/validators.js';
-import { logger } from '../utils/logger.js';
+const { Command } = require('commander');
+const fs = require('fs/promises');
+const { NRQLService } = require('../services/nrql.service.js');
+const { Config } = require('../core/config.js');
+const { Output } = require('../utils/output.js');
+const { validateNRQLQuery } = require('../utils/validators.js');
+const { logger } = require('../utils/logger.js');
 
-export class NRQLCommand {
+class NRQLCommand {
   getCommand() {
     const nrql = new Command('nrql')
       .description('NRQL validation, optimization, and intelligence operations');
@@ -305,3 +305,7 @@ export class NRQLCommand {
     }
   }
 }
+
+module.exports = {
+  NRQLCommand
+};

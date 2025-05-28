@@ -1,10 +1,86 @@
-# NR-Guardian: New Relic Validation & Self-Correction Engine with NRDOT v2
+# DashBuilder Scripts
 
-NR-Guardian is a comprehensive CLI tool and library designed to validate, optimize, and self-correct New Relic configurations with advanced **NRDOT v2 Process Metrics Optimization Framework** integration. It provides intelligent process-aware validation capabilities for NRQL queries, dashboards, entity relationships, and cost optimization, making it an essential tool for both human operators and LLM agents working with New Relic.
+## Script Organization
 
-## 🎯 Mission
+Scripts are now organized into clear categories for better maintainability and usability.
 
-To provide a robust, scriptable interface for validating configurations, data integrity, schema adherence, query correctness, and dashboard functionality within New Relic, with **NRDOT v2 process intelligence** capabilities for achieving 95%+ critical process coverage while reducing telemetry costs by 40%+ through intelligent filtering and optimization.
+### Core Scripts (`scripts/core/`)
+- **setup.js** - Interactive setup wizard
+- **validation.js** - Unified validation framework
+- **experiment-orchestrator.js** - Experiment runner
+- **docker-utils.sh** - Docker operations
+
+### Consolidated Tools (New)
+- **test-newrelic-connection.js** - Comprehensive connection testing (replaces test-*.js scripts)
+- **nrdot-diagnostics.js** - Full system diagnostics (replaces check-*.js scripts)
+- **find-metrics.js** - Unified metric exploration (replaces find-*.js and list-*.js)
+- **../test-metrics.sh** - All metric testing scenarios (replaces test-*-metrics.sh)
+
+### Main Scripts
+- **control-loop.js** - NRDOT control loop implementation
+- **dashboard-create-api.js** - Create dashboards programmatically
+- **dashboard-deploy-manual.js** - Manual dashboard deployment guide
+- **verify-newrelic-data.js** - Verify data in New Relic
+
+### CLI Commands (`scripts/commands/`)
+- Command-line interface for dashboard operations
+- Experiment management commands
+- NRQL query interface
+
+## Usage
+
+```bash
+# Setup
+npm run setup                 # Interactive setup wizard
+npm run setup:docker         # Docker-specific setup
+
+# Docker Operations
+npm run start                # Start all services
+npm run stop                 # Stop all services
+npm run restart              # Restart services
+npm run status               # Check service status
+npm run logs                 # View logs
+npm run docker:clean         # Clean Docker resources
+
+# Validation
+npm run validate             # Run all validations
+npm run validate:docker      # Docker-specific validation
+
+# Experiments
+npm run experiment           # Run experiments
+npm run experiment:quick     # Quick 5-minute experiment
+
+# Other Operations
+npm run control-loop         # Start control loop
+npm run metrics:generate     # Generate test metrics
+```
+
+## Script Types
+
+### JavaScript Scripts
+Used for:
+- Complex business logic
+- API interactions
+- Data processing
+- Cross-platform operations
+
+### Shell Scripts
+Used for:
+- Simple system commands
+- Docker operations
+- Environment setup
+
+## Migration from Old Scripts
+
+| Old Script | New Script | npm Command |
+|------------|------------|-------------|
+| master-setup.sh | scripts/core/setup.js | npm run setup |
+| validate-integration.sh | scripts/core/validation.js | npm run validate |
+| run-experiment.sh | scripts/core/experiment-orchestrator.js | npm run experiment |
+| restart.sh | scripts/core/docker-utils.sh | npm run restart |
+| status.sh | scripts/core/docker-utils.sh | npm run status |
+| control-loop.sh | scripts/control-loop.js | npm run control-loop |
+| metrics-generator.sh | scripts/metrics-generator-fixed.js | npm run metrics:generate |
 
 ## 🚀 NRDOT v2 Enhanced Features
 
