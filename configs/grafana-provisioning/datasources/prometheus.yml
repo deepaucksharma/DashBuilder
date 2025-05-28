@@ -1,0 +1,18 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    
+  - name: NewRelic
+    type: fifemon-graphql-datasource
+    access: proxy
+    jsonData:
+      nrql_endpoint: https://api.newrelic.com/graphql
+    secureJsonData:
+      api_key: ${NEW_RELIC_API_KEY}
+    editable: true

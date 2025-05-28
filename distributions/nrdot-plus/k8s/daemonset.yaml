@@ -1,0 +1,231 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nrdot-collector
+  namespace: nrdot-system
+  labels:
+    app.kubernetes.io/name: nrdot-collector
+    app.kubernetes.io/part-of: nrdot-plus
+    app.kubernetes.io/version: "4.0.0"
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nrdot-collector
+      app.kubernetes.io/part-of: nrdot-plus
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nrdot-collector
+        app.kubernetes.io/part-of: nrdot-plus
+        app.kubernetes.io/version: "4.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8888"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: nrdot-collector
+      
+      # Host network for process discovery
+      hostNetwork: true
+      hostPID: true
+      
+      # Security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      
+      # Priority class
+      priorityClassName: system-node-critical
+      
+      # Tolerations for all nodes
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - effect: NoExecute
+          operator: Exists
+      
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:0.91.0
+          imagePullPolicy: IfNotPresent
+          
+          # Command
+          command: ["/otelcol-contrib"]
+          args: ["--config=/etc/nrdot-plus/config.yaml"]
+          
+          # Security context
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - DAC_READ_SEARCH  # For process discovery
+          
+          # Resources
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+          
+          # Environment variables
+          env:
+            # New Relic
+            - name: NEW_RELIC_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nrdot-secrets
+                  key: license-key
+            
+            # OTLP endpoint
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "https://otlp.nr-data.net"
+            
+            # Node information
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            
+            # NRDOT configuration
+            - name: NRDOT_COLLECTION_INTERVAL
+              value: "60s"
+            
+            - name: NRDOT_ACTIVE_PROFILE
+              valueFrom:
+                configMapKeyRef:
+                  name: nrdot-settings
+                  key: active_profile
+                  optional: true
+            
+            - name: NRDOT_RING
+              value: "0"  # Could be set per node via labels
+            
+            - name: NRDOT_MIN_IMPORTANCE
+              value: "0.5"
+            
+            - name: NRDOT_CPU_THRESHOLD
+              value: "10.0"
+            
+            - name: NRDOT_MEMORY_THRESHOLD_MB
+              value: "100"
+          
+          # Ports
+          ports:
+            - name: metrics
+              containerPort: 8888
+              protocol: TCP
+            - name: health
+              containerPort: 13133
+              protocol: TCP
+          
+          # Probes
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+          
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          
+          # Volume mounts
+          volumeMounts:
+            # Configuration
+            - name: config
+              mountPath: /etc/nrdot-plus/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            
+            - name: optimization
+              mountPath: /etc/nrdot-plus/optimization.yaml
+              subPath: optimization.yaml
+              readOnly: true
+            
+            # Host filesystem (read-only)
+            - name: host-proc
+              mountPath: /host/proc
+              readOnly: true
+            
+            - name: host-sys
+              mountPath: /host/sys
+              readOnly: true
+            
+            - name: host-etc
+              mountPath: /host/etc
+              readOnly: true
+            
+            # Writable directories
+            - name: storage
+              mountPath: /var/lib/nrdot-plus/storage
+            
+            - name: tmp
+              mountPath: /tmp
+      
+      # Volumes
+      volumes:
+        # Configuration from ConfigMaps
+        - name: config
+          configMap:
+            name: nrdot-collector-config
+            items:
+              - key: config.yaml
+                path: config.yaml
+        
+        - name: optimization
+          configMap:
+            name: nrdot-optimization-config
+            items:
+              - key: optimization.yaml
+                path: optimization.yaml
+        
+        # Host filesystem
+        - name: host-proc
+          hostPath:
+            path: /proc
+            type: Directory
+        
+        - name: host-sys
+          hostPath:
+            path: /sys
+            type: Directory
+        
+        - name: host-etc
+          hostPath:
+            path: /etc
+            type: Directory
+        
+        # Writable volumes
+        - name: storage
+          emptyDir:
+            sizeLimit: 1Gi
+        
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi

@@ -5,10 +5,11 @@
   "main": "src/index.js",
   "type": "module",
   "bin": {
-    "nr-guardian": "./src/cli.js"
+    "nr-guardian": "src/cli.js"
   },
   "scripts": {
     "start": "node src/cli.js",
+    "cli": "node src/cli.js",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
@@ -44,5 +45,10 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "tests"
   }
 }

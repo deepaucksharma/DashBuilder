@@ -1,0 +1,48 @@
+# OpenTelemetry Collector for NRDOT Plus
+# Production-ready container with all configurations
+
+FROM otel/opentelemetry-collector-contrib:0.91.0
+
+# Metadata
+LABEL maintainer="NRDOT Team"
+LABEL description="NRDOT Plus OpenTelemetry Collector"
+LABEL version="4.0.0"
+
+# Create user and directories
+USER root
+RUN useradd -r -u 1001 -g root nrdot && \
+    mkdir -p /etc/nrdot-plus /var/lib/nrdot-plus/storage /var/log/nrdot-plus && \
+    chown -R nrdot:root /etc/nrdot-plus /var/lib/nrdot-plus /var/log/nrdot-plus && \
+    chmod -R 755 /etc/nrdot-plus /var/lib/nrdot-plus /var/log/nrdot-plus
+
+# Copy configurations
+COPY --chown=nrdot:root config/config.yaml /etc/nrdot-plus/config.yaml
+COPY --chown=nrdot:root config/optimization.yaml /etc/nrdot-plus/optimization.yaml
+
+# Environment variables with defaults
+ENV OTEL_EXPORTER_OTLP_ENDPOINT="https://otlp.nr-data.net" \
+    OTEL_LOG_LEVEL="info" \
+    NRDOT_COLLECTION_INTERVAL="60s" \
+    NRDOT_RING="0" \
+    NRDOT_ACTIVE_PROFILE="balanced" \
+    NRDOT_MIN_IMPORTANCE="0.5" \
+    NRDOT_CPU_THRESHOLD="10.0" \
+    NRDOT_MEMORY_THRESHOLD_MB="100" \
+    NRDOT_TARGET_SERIES="5000" \
+    NRDOT_MAX_SERIES="10000"
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:13133/health || exit 1
+
+# Expose ports
+EXPOSE 8888  # Prometheus metrics
+EXPOSE 13133 # Health check
+EXPOSE 8889  # Internal metrics
+
+# Switch to non-root user
+USER nrdot
+
+# Run collector with config
+ENTRYPOINT ["/otelcol-contrib"]
+CMD ["--config=/etc/nrdot-plus/config.yaml"]

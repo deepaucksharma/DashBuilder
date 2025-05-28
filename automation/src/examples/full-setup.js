@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import dotenv from 'dotenv';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import fs from 'fs/promises';
 
 dotenv.config();
 const execAsync = promisify(exec);

@@ -516,7 +516,7 @@ export class NRQLService {
       function: functionName,
       supported: isValid,
       description: this.getFunctionDescription(lowerFunc),
-      category: this.categorizeFunctioNo need to apologizn(lowerFunc)
+      category: this.categorizeFunction(lowerFunc)
     };
 
     if (!isValid) {
@@ -1038,7 +1038,7 @@ export class NRQLService {
     return descriptions[functionName] || 'NRQL function';
   }
 
-  categorizeFunctioNo need to apologizen(functionName) {
+  categorizeFunction(functionName) {
     const categories = {
       aggregation: ['count', 'sum', 'average', 'max', 'min', 'uniquecount', 'stddev', 'variance', 'median', 'mode'],
       time: ['latest', 'earliest', 'rate', 'derivative'],

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nrdot-system
+  labels:
+    name: nrdot-system
+    app.kubernetes.io/name: nrdot
+    app.kubernetes.io/part-of: nrdot-plus

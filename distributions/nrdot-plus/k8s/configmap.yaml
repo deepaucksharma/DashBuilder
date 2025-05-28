@@ -1,0 +1,132 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nrdot-collector-config
+  namespace: nrdot-system
+  labels:
+    app.kubernetes.io/name: nrdot-collector
+    app.kubernetes.io/part-of: nrdot-plus
+data:
+  config.yaml: |
+    # NRDOT-Plus Kubernetes Configuration
+    # This is a reference to the main config - actual content would be inserted here
+    # For now, we'll use environment variable substitution
+    
+    extensions:
+      health_check:
+        endpoint: "0.0.0.0:13133"
+        path: "/health"
+        
+      file_storage:
+        directory: /var/lib/nrdot-plus/storage
+        timeout: 10s
+        
+      memory_ballast:
+        size_mib: 64
+    
+    receivers:
+      hostmetrics:
+        collection_interval: ${env:NRDOT_COLLECTION_INTERVAL:-60s}
+        scrapers:
+          process:
+            exclude:
+              names: ["^\\[.*\\]$"]
+              match_type: regexp
+            metrics:
+              process.cpu.time:
+                enabled: true
+              process.memory.physical_usage:
+                enabled: true
+              process.disk.io:
+                enabled: true
+    
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 256
+        spike_limit_mib: 64
+      
+      resourcedetection:
+        detectors: [env, system, k8snode]
+        timeout: 5s
+        k8snode:
+          auth_type: serviceAccount
+      
+      attributes/k8s:
+        actions:
+          - key: k8s.node.name
+            from_attribute: host.name
+            action: insert
+          - key: k8s.namespace.name
+            value: ${env:K8S_NAMESPACE}
+            action: insert
+          - key: k8s.pod.name
+            value: ${env:K8S_POD_NAME}
+            action: insert
+    
+    exporters:
+      otlphttp/newrelic:
+        endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT:-https://otlp.nr-data.net}
+        headers:
+          api-key: ${env:NEW_RELIC_LICENSE_KEY}
+        compression: gzip
+        timeout: 30s
+      
+      prometheus:
+        endpoint: "0.0.0.0:8888"
+        namespace: nrdot
+    
+    service:
+      pipelines:
+        metrics:
+          receivers: [hostmetrics]
+          processors: [memory_limiter, resourcedetection, attributes/k8s]
+          exporters: [otlphttp/newrelic, prometheus]
+    
+    telemetry:
+      logs:
+        level: ${env:OTEL_LOG_LEVEL:-info}
+        encoding: json
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nrdot-optimization-config
+  namespace: nrdot-system
+  labels:
+    app.kubernetes.io/name: nrdot-collector
+    app.kubernetes.io/part-of: nrdot-plus
+data:
+  optimization.yaml: |
+    version: 2.0.0
+    schema_version: 1
+    
+    state:
+      active_profile: "${env:NRDOT_ACTIVE_PROFILE:-balanced}"
+      last_updated: "2024-01-01T00:00:00Z"
+      updated_by: "k8s-deployment"
+      host_id: "${env:K8S_NODE_NAME}"
+      experiment_ring: "${env:NRDOT_RING:-0}"
+    
+    profiles:
+      conservative:
+        description: "Maximum visibility, minimal filtering"
+        thresholds:
+          min_importance_score: 0.2
+          cpu_threshold_percent: 5.0
+          memory_threshold_mb: 50
+      
+      balanced:
+        description: "Good balance of cost and coverage"
+        thresholds:
+          min_importance_score: 0.5
+          cpu_threshold_percent: 10.0
+          memory_threshold_mb: 100
+      
+      aggressive:
+        description: "Maximum cost reduction"
+        thresholds:
+          min_importance_score: 0.7
+          cpu_threshold_percent: 20.0
+          memory_threshold_mb: 200

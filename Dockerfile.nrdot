@@ -1,0 +1,719 @@
+# NRDOT v2 Final Complete Setup - Everything Automated
+FROM node:18-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    bash git curl python3 make g++ \
+    chromium chromium-chromedriver
+
+WORKDIR /app
+
+# Copy all package files
+COPY package*.json ./
+COPY scripts/package*.json ./scripts/
+COPY automation/package*.json ./automation/
+COPY nrdot-nr1-app/package*.json ./nrdot-nr1-app/
+COPY orchestrator/package*.json ./orchestrator/
+
+# Install all dependencies
+RUN npm install --legacy-peer-deps --workspaces
+
+# Copy all source files
+COPY . .
+
+# Production stage
+FROM node:18-alpine
+
+# Install all runtime dependencies
+RUN apk add --no-cache \
+    bash curl wget jq yq bc \
+    supervisor nginx procps coreutils \
+    util-linux findutils grep sed gawk \
+    ca-certificates openssl \
+    # For process monitoring
+    htop iotop sysstat \
+    # For log management
+    logrotate \
+    # For networking diagnostics
+    bind-tools iputils tcpdump \
+    # For system monitoring
+    lsof strace
+
+# Install OpenTelemetry Collector
+RUN curl -L https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.96.0/otelcol-contrib_0.96.0_linux_amd64.tar.gz | tar -xz -C /usr/local/bin/
+
+# Create all necessary directories
+RUN mkdir -p \
+    /etc/nrdot-plus \
+    /var/lib/nrdot-plus/{state,rings,baselines,experiments,validation} \
+    /var/log/nrdot-plus \
+    /var/log/nrdot-validation \
+    /var/www/dashboard/{reports,api,health} \
+    /app/output \
+    /var/run/supervisor \
+    /etc/logrotate.d
+
+# Copy application from builder
+COPY --from=builder /app /app
+
+# Copy all configurations and scripts
+COPY distributions/nrdot-plus/config/* /etc/nrdot-plus/
+COPY distributions/nrdot-plus/scripts/* /usr/local/bin/
+COPY docker-entrypoint-bulletproof.sh /docker-entrypoint.sh
+COPY scripts/validate-complete-setup.sh /usr/local/bin/validate-setup
+COPY scripts/automated-continuous-validation.sh /usr/local/bin/automated-validation
+
+# Make all scripts executable
+RUN find /usr/local/bin -type f -name "*.sh" -exec chmod +x {} \; && \
+    chmod +x /docker-entrypoint.sh /usr/local/bin/validate-setup /usr/local/bin/automated-validation
+
+# Create logrotate configuration
+RUN printf '/var/log/nrdot-plus/*.log /var/log/nrdot-validation/*.log {\n\
+    size 100M\n\
+    rotate 10\n\
+    compress\n\
+    delaycompress\n\
+    missingok\n\
+    notifempty\n\
+    create 0644 root root\n\
+    sharedscripts\n\
+    postrotate\n\
+        supervisorctl restart all > /dev/null 2>&1 || true\n\
+    endscript\n\
+}\n' > /etc/logrotate.d/nrdot
+
+# Create nginx configuration with comprehensive endpoints
+RUN cat > /etc/nginx/http.d/default.conf << 'EOF'
+server {
+    listen 80;
+    server_name localhost;
+    
+    root /var/www/dashboard;
+    index index.html;
+    
+    # Enable gzip compression
+    gzip on;
+    gzip_types text/plain application/json text/css application/javascript;
+    
+    # Main dashboard
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+    
+    # API endpoints
+    location /api {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 75s;
+    }
+    
+    # Metrics endpoint
+    location /metrics {
+        proxy_pass http://localhost:8888;
+        proxy_read_timeout 30s;
+    }
+    
+    # Health endpoint
+    location /health {
+        access_log off;
+        add_header Content-Type application/json;
+        return 200 '{"status":"healthy","service":"nginx","timestamp":"$time_iso8601"}';
+    }
+    
+    # Validation reports
+    location /reports {
+        autoindex on;
+        autoindex_format json;
+        alias /var/www/dashboard/reports;
+    }
+    
+    # WebSocket support for real-time updates
+    location /ws {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    
+    # Logs endpoint (secured)
+    location /logs {
+        auth_basic "Restricted Access";
+        auth_basic_user_file /etc/nginx/.htpasswd;
+        autoindex on;
+        alias /var/log/nrdot-validation;
+    }
+}
+EOF
+
+# Create basic auth for logs (user: admin, pass: nrdot)
+RUN echo 'admin:$apr1$x1e5.0J0$WxR0pLKtT7lJnn8HJN9wE/' > /etc/nginx/.htpasswd
+
+# Create comprehensive supervisord configuration
+RUN cat > /etc/supervisord.conf << 'EOF'
+[supervisord]
+nodaemon=true
+logfile=/var/log/supervisord.log
+pidfile=/var/run/supervisor/supervisord.pid
+childlogdir=/var/log
+user=root
+
+[unix_http_server]
+file=/var/run/supervisor.sock
+chmod=0700
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+[supervisorctl]
+serverurl=unix:///var/run/supervisor.sock
+
+# OpenTelemetry Collector
+[program:otelcol]
+command=/usr/local/bin/otelcol-contrib --config=/etc/nrdot-plus/config.yaml
+autostart=true
+autorestart=true
+priority=10
+startsecs=10
+startretries=3
+stdout_logfile=/var/log/nrdot-plus/otelcol.out.log
+stderr_logfile=/var/log/nrdot-plus/otelcol.err.log
+stdout_logfile_maxbytes=50MB
+stderr_logfile_maxbytes=50MB
+stdout_logfile_backups=5
+stderr_logfile_backups=5
+environment=GOGC=80,GOMEMLIMIT=6GiB
+
+# Nginx Web Server
+[program:nginx]
+command=nginx -g "daemon off;"
+autostart=true
+autorestart=true
+priority=20
+stdout_logfile=/var/log/nginx.out.log
+stderr_logfile=/var/log/nginx.err.log
+
+# API Server
+[program:api-server]
+command=node /app/api-server-complete.js
+directory=/app
+autostart=true
+autorestart=true
+priority=30
+environment=NODE_ENV="production",NEW_RELIC_API_KEY="%(ENV_NEW_RELIC_API_KEY)s",NEW_RELIC_ACCOUNT_ID="%(ENV_NEW_RELIC_ACCOUNT_ID)s"
+stdout_logfile=/var/log/api-server.out.log
+stderr_logfile=/var/log/api-server.err.log
+
+# Control Loop
+[program:control-loop]
+command=/usr/local/bin/nrdot-plus-control-loop.sh
+autostart=true
+autorestart=true
+priority=40
+startsecs=30
+startretries=10
+stdout_logfile=/var/log/nrdot-plus/control-loop.out.log
+stderr_logfile=/var/log/nrdot-plus/control-loop.err.log
+environment=NEW_RELIC_API_KEY="%(ENV_NEW_RELIC_API_KEY)s",NEW_RELIC_ACCOUNT_ID="%(ENV_NEW_RELIC_ACCOUNT_ID)s"
+
+# Automated Validation System
+[program:validation-system]
+command=/usr/local/bin/automated-validation
+autostart=true
+autorestart=true
+priority=50
+startsecs=60
+stdout_logfile=/var/log/nrdot-validation/system.out.log
+stderr_logfile=/var/log/nrdot-validation/system.err.log
+
+# Test Data Generator
+[program:test-data-generator]
+command=/usr/local/bin/generate-test-data.sh
+autostart=true
+autorestart=true
+priority=60
+stdout_logfile=/var/log/test-data-generator.out.log
+stderr_logfile=/var/log/test-data-generator.err.log
+
+# Issue Monitor
+[program:issue-monitor]
+command=/usr/local/bin/monitor-nrdot-issues.sh
+autostart=true
+autorestart=true
+priority=70
+stdout_logfile=/var/log/issue-monitor.out.log
+stderr_logfile=/var/log/issue-monitor.err.log
+
+# Log Rotator
+[program:logrotate]
+command=/bin/sh -c 'while true; do logrotate /etc/logrotate.d/nrdot; sleep 3600; done'
+autostart=true
+autorestart=true
+priority=80
+stdout_logfile=/var/log/logrotate.out.log
+stderr_logfile=/var/log/logrotate.err.log
+
+# WebSocket Server for Real-time Updates
+[program:websocket-server]
+command=node /app/websocket-server.js
+directory=/app
+autostart=true
+autorestart=true
+priority=90
+environment=NODE_ENV="production"
+stdout_logfile=/var/log/websocket.out.log
+stderr_logfile=/var/log/websocket.err.log
+
+[group:nrdot]
+programs=otelcol,control-loop,validation-system,test-data-generator,issue-monitor
+
+[group:web]
+programs=nginx,api-server,websocket-server
+EOF
+
+# Create enhanced API server with all endpoints
+RUN cat > /app/api-server-complete.js << 'EOF'
+const http = require('http');
+const fs = require('fs').promises;
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
+
+// API endpoints
+const endpoints = {
+    '/api/health': getHealth,
+    '/api/validate': runValidation,
+    '/api/diagnostics': getDiagnostics,
+    '/api/metrics': getMetrics,
+    '/api/logs': getLogs,
+    '/api/config': getConfig,
+    '/api/state': getState,
+    '/api/alerts': getAlerts,
+    '/api/report': getLatestReport
+};
+
+async function getHealth(req, res) {
+    const health = {
+        status: 'unknown',
+        timestamp: new Date().toISOString(),
+        checks: {},
+        services: {}
+    };
+    
+    try {
+        // Check all services via supervisor
+        const { stdout } = await execAsync('supervisorctl status');
+        const lines = stdout.split('\n').filter(line => line.trim());
+        
+        lines.forEach(line => {
+            const [service, status] = line.split(/\s+/);
+            if (service && status) {
+                health.services[service] = status === 'RUNNING' ? 'healthy' : 'unhealthy';
+            }
+        });
+        
+        // Check specific endpoints
+        health.checks.otel_collector = await checkEndpoint('http://localhost:8888/metrics');
+        health.checks.new_relic_api = await checkNewRelicAPI();
+        health.checks.data_ingestion = await checkDataIngestion();
+        
+        // Overall status
+        const allHealthy = Object.values(health.services).every(s => s === 'healthy') &&
+                          Object.values(health.checks).every(s => s === 'healthy');
+        health.status = allHealthy ? 'healthy' : 'degraded';
+        
+    } catch (error) {
+        health.error = error.message;
+        health.status = 'error';
+    }
+    
+    res.writeHead(health.status === 'healthy' ? 200 : 503);
+    res.end(JSON.stringify(health, null, 2));
+}
+
+async function runValidation(req, res) {
+    try {
+        const { stdout, stderr } = await execAsync('/usr/local/bin/validate-setup');
+        res.writeHead(200);
+        res.end(JSON.stringify({
+            success: true,
+            output: stdout,
+            error: stderr
+        }));
+    } catch (error) {
+        res.writeHead(500);
+        res.end(JSON.stringify({
+            success: false,
+            error: error.message
+        }));
+    }
+}
+
+async function getDiagnostics(req, res) {
+    try {
+        const report = await fs.readFile('/tmp/diagnostic-report.txt', 'utf8');
+        res.writeHead(200, {'Content-Type': 'text/plain'});
+        res.end(report);
+    } catch (error) {
+        res.writeHead(404);
+        res.end('Diagnostic report not found');
+    }
+}
+
+async function getMetrics(req, res) {
+    try {
+        const { stdout } = await execAsync('cd /app/scripts && node src/cli.js ingest get-data-volume --days 1 --json');
+        res.writeHead(200);
+        res.end(stdout);
+    } catch (error) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: 'Failed to get metrics' }));
+    }
+}
+
+async function getLogs(req, res) {
+    const logType = req.url.split('?')[1] || 'validation';
+    const logFile = `/var/log/nrdot-validation/${logType}.log`;
+    
+    try {
+        const logs = await fs.readFile(logFile, 'utf8');
+        const lastLines = logs.split('\n').slice(-100).join('\n');
+        res.writeHead(200, {'Content-Type': 'text/plain'});
+        res.end(lastLines);
+    } catch (error) {
+        res.writeHead(404);
+        res.end(`Log file not found: ${logType}`);
+    }
+}
+
+async function getConfig(req, res) {
+    try {
+        const config = await fs.readFile('/etc/nrdot-plus/config.yaml', 'utf8');
+        res.writeHead(200, {'Content-Type': 'text/yaml'});
+        res.end(config);
+    } catch (error) {
+        res.writeHead(500);
+        res.end('Failed to read configuration');
+    }
+}
+
+async function getState(req, res) {
+    const state = {};
+    
+    try {
+        // Read all state files
+        const stateFiles = [
+            'ring-assignments.json',
+            'process-baselines.json',
+            'experiments.json'
+        ];
+        
+        for (const file of stateFiles) {
+            try {
+                const content = await fs.readFile(`/var/lib/nrdot-plus/state/${file}`, 'utf8');
+                state[file.replace('.json', '')] = JSON.parse(content);
+            } catch (e) {
+                state[file.replace('.json', '')] = null;
+            }
+        }
+        
+        res.writeHead(200);
+        res.end(JSON.stringify(state, null, 2));
+    } catch (error) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: error.message }));
+    }
+}
+
+async function getAlerts(req, res) {
+    try {
+        const alerts = await fs.readFile('/var/lib/nrdot-plus/validation/active-alerts.json', 'utf8');
+        res.writeHead(200);
+        res.end(alerts);
+    } catch (error) {
+        res.writeHead(200);
+        res.end('[]');
+    }
+}
+
+async function getLatestReport(req, res) {
+    try {
+        const report = await fs.readFile('/var/www/dashboard/reports/latest-report.json', 'utf8');
+        res.writeHead(200);
+        res.end(report);
+    } catch (error) {
+        res.writeHead(404);
+        res.end('No report available');
+    }
+}
+
+// Helper functions
+async function checkEndpoint(url) {
+    try {
+        const { stdout } = await execAsync(`curl -s -o /dev/null -w "%{http_code}" ${url}`);
+        return stdout.trim() === '200' ? 'healthy' : 'unhealthy';
+    } catch (error) {
+        return 'down';
+    }
+}
+
+async function checkNewRelicAPI() {
+    try {
+        const { stdout } = await execAsync(
+            `curl -s -o /dev/null -w "%{http_code}" https://api.newrelic.com/graphql -H "Api-Key: ${process.env.NEW_RELIC_API_KEY}"`
+        );
+        return stdout.trim() === '200' ? 'healthy' : 'unhealthy';
+    } catch (error) {
+        return 'error';
+    }
+}
+
+async function checkDataIngestion() {
+    try {
+        const stats = await fs.readFile('/tmp/ingestion-stats.json', 'utf8');
+        const data = JSON.parse(stats);
+        const lastUpdate = new Date(data.last_update);
+        const minutesAgo = (Date.now() - lastUpdate) / 1000 / 60;
+        return minutesAgo < 5 ? 'healthy' : 'stale';
+    } catch (error) {
+        return 'no_data';
+    }
+}
+
+// Create server
+const server = http.createServer(async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+    }
+    
+    const endpoint = Object.keys(endpoints).find(path => req.url.startsWith(path));
+    
+    if (endpoint) {
+        try {
+            await endpoints[endpoint](req, res);
+        } catch (error) {
+            console.error(`Error handling ${endpoint}:`, error);
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: error.message }));
+        }
+    } else {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: 'Not found', available: Object.keys(endpoints) }));
+    }
+});
+
+// Start server
+const PORT = process.env.API_PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`API server running on port ${PORT}`);
+    console.log('Available endpoints:', Object.keys(endpoints));
+});
+
+// Update ingestion stats periodically
+setInterval(async () => {
+    try {
+        const { stdout: collectorProcs } = await execAsync('ps aux | grep otelcol | grep -v grep | wc -l');
+        const { stdout: metricsOutput } = await execAsync('curl -s http://localhost:8888/metrics | grep accepted_metric_points | head -1 || echo "0"');
+        
+        const stats = {
+            last_update: new Date().toISOString(),
+            collector_processes: parseInt(collectorProcs.trim()),
+            metrics_sent: parseInt(metricsOutput.match(/\d+/) || 0),
+            errors: 0
+        };
+        
+        await fs.writeFile('/tmp/ingestion-stats.json', JSON.stringify(stats));
+    } catch (error) {
+        console.error('Failed to update ingestion stats:', error);
+    }
+}, 30000);
+EOF
+
+# Create WebSocket server for real-time updates
+RUN cat > /app/websocket-server.js << 'EOF'
+const WebSocket = require('ws');
+const fs = require('fs').promises;
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
+
+const wss = new WebSocket.Server({ port: 3001 });
+
+// Broadcast updates to all connected clients
+function broadcast(data) {
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(data));
+        }
+    });
+}
+
+// Send real-time metrics
+async function sendMetricsUpdate() {
+    try {
+        // Get current metrics
+        const stats = await fs.readFile('/tmp/ingestion-stats.json', 'utf8');
+        const health = await fs.readFile('/var/lib/nrdot-plus/validation/latest-health.json', 'utf8').catch(() => '{}');
+        
+        broadcast({
+            type: 'metrics',
+            data: {
+                stats: JSON.parse(stats),
+                health: JSON.parse(health),
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Failed to send metrics update:', error);
+    }
+}
+
+// Send alerts
+async function checkAndSendAlerts() {
+    try {
+        const alerts = await fs.readFile('/var/lib/nrdot-plus/validation/active-alerts.json', 'utf8');
+        const alertData = JSON.parse(alerts);
+        
+        if (alertData.length > 0) {
+            broadcast({
+                type: 'alerts',
+                data: alertData
+            });
+        }
+    } catch (error) {
+        // No alerts file means no alerts
+    }
+}
+
+// Handle client connections
+wss.on('connection', (ws) => {
+    console.log('New WebSocket connection');
+    
+    // Send initial data
+    sendMetricsUpdate();
+    
+    ws.on('message', async (message) => {
+        try {
+            const { type, action } = JSON.parse(message);
+            
+            if (type === 'command') {
+                // Handle commands from UI
+                const result = await handleCommand(action);
+                ws.send(JSON.stringify({ type: 'response', data: result }));
+            }
+        } catch (error) {
+            ws.send(JSON.stringify({ type: 'error', message: error.message }));
+        }
+    });
+    
+    ws.on('close', () => {
+        console.log('WebSocket connection closed');
+    });
+});
+
+// Handle commands from UI
+async function handleCommand(action) {
+    switch (action) {
+        case 'restart-collector':
+            await execAsync('supervisorctl restart otelcol');
+            return { success: true, message: 'Collector restarted' };
+        
+        case 'run-validation':
+            const { stdout } = await execAsync('/usr/local/bin/validate-setup');
+            return { success: true, output: stdout };
+        
+        default:
+            throw new Error(`Unknown command: ${action}`);
+    }
+}
+
+// Start periodic updates
+setInterval(sendMetricsUpdate, 5000);
+setInterval(checkAndSendAlerts, 10000);
+
+console.log('WebSocket server running on port 3001');
+EOF
+
+# Create issue monitoring script
+RUN cat > /usr/local/bin/monitor-nrdot-issues.sh << 'EOF'
+#!/bin/bash
+# Monitor for known NRDOT issues and attempt auto-remediation
+
+source /usr/local/bin/automated-validation || true
+
+while true; do
+    # Monitor CPU spikes
+    cpu_usage=$(ps aux | grep otelcol-contrib | awk '{print $3}' | head -1 || echo "0")
+    if (( $(echo "$cpu_usage > 90" | bc -l) )); then
+        log_event "CRITICAL" "health" "CPU spike detected" "{\"cpu_percent\": $cpu_usage}"
+        
+        # Auto-remediate by restarting collector
+        supervisorctl restart otelcol
+        sleep 30
+    fi
+    
+    # Monitor memory usage
+    memory_kb=$(ps aux | grep otelcol-contrib | awk '{print $6}' | head -1 || echo "0")
+    if [ "$memory_kb" -gt 4194304 ]; then  # 4GB
+        log_event "CRITICAL" "health" "Memory limit exceeded" "{\"memory_kb\": $memory_kb}"
+        
+        # Restart collector
+        supervisorctl restart otelcol
+        sleep 30
+    fi
+    
+    # Monitor pipeline backup
+    refused_metrics=$(curl -s http://localhost:8888/metrics | grep refused_metric_points | awk '{print $2}' || echo "0")
+    if [ "$refused_metrics" -gt 1000 ]; then
+        log_event "WARN" "metrics" "Pipeline backup detected" "{\"refused_metrics\": $refused_metrics}"
+    fi
+    
+    # Check state persistence
+    if [ ! -f "/var/lib/nrdot-plus/state/ring-assignments.json" ]; then
+        log_event "ERROR" "validation" "Recreating missing state file" "{\"file\": \"ring-assignments.json\"}"
+        
+        # Recreate state file
+        echo '{"version":"1.0","timestamp":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'","assignments":{},"overrides":{},"history":[]}' \
+            > /var/lib/nrdot-plus/state/ring-assignments.json
+    fi
+    
+    sleep 30
+done
+EOF
+chmod +x /usr/local/bin/monitor-nrdot-issues.sh
+
+# Set permissions
+RUN chmod +x /docker-entrypoint.sh && \
+    find /usr/local/bin -type f -exec chmod +x {} \;
+
+# Set working directory
+WORKDIR /app
+
+# Expose all ports
+EXPOSE 80 3000 3001 8888 13133 9090
+
+# Environment variables
+ENV NODE_ENV=production
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV GOGC=80
+ENV GOMEMLIMIT=6GiB
+
+# Create comprehensive health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=180s --retries=5 \
+    CMD curl -f http://localhost/api/health || exit 1
+
+# Final entrypoint
+ENTRYPOINT ["/docker-entrypoint.sh"]

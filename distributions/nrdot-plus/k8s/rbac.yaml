@@ -1,0 +1,103 @@
+# ServiceAccount for NRDOT collector
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nrdot-collector
+  namespace: nrdot-system
+  labels:
+    app.kubernetes.io/name: nrdot-collector
+    app.kubernetes.io/part-of: nrdot-plus
+
+---
+# ClusterRole for node and pod information
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nrdot-collector
+  labels:
+    app.kubernetes.io/name: nrdot-collector
+    app.kubernetes.io/part-of: nrdot-plus
+rules:
+  # Read node information
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/proxy", "nodes/metrics"]
+    verbs: ["get", "list"]
+  
+  # Read pod information
+  - apiGroups: [""]
+    resources: ["pods", "endpoints", "services"]
+    verbs: ["get", "list"]
+  
+  # Read namespaces
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+  
+  # Read resource metrics
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nrdot-collector
+  labels:
+    app.kubernetes.io/name: nrdot-collector
+    app.kubernetes.io/part-of: nrdot-plus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nrdot-collector
+subjects:
+  - kind: ServiceAccount
+    name: nrdot-collector
+    namespace: nrdot-system
+
+---
+# Role for namespace-specific resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nrdot-collector
+  namespace: nrdot-system
+  labels:
+    app.kubernetes.io/name: nrdot-collector
+    app.kubernetes.io/part-of: nrdot-plus
+rules:
+  # Read ConfigMaps
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  
+  # Update ConfigMaps (for control loop)
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["nrdot-settings", "nrdot-state"]
+    verbs: ["update", "patch"]
+  
+  # Read Secrets
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+
+---
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nrdot-collector
+  namespace: nrdot-system
+  labels:
+    app.kubernetes.io/name: nrdot-collector
+    app.kubernetes.io/part-of: nrdot-plus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nrdot-collector
+subjects:
+  - kind: ServiceAccount
+    name: nrdot-collector
+    namespace: nrdot-system

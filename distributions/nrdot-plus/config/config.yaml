@@ -1,5 +1,6 @@
-# NRDOT-Plus Default Configuration
-# This is the main collector configuration with optimization enabled
+# NRDOT-Plus Production Configuration
+# Version: 4.2.0 - Consolidated, tested configuration
+# Combines minimal working config with essential NRDOT features
 
 extensions:
   health_check:
@@ -14,185 +15,262 @@ extensions:
     size_mib: 64
 
 receivers:
-  # Host metrics with process optimization
+  # Host metrics with comprehensive process discovery
   hostmetrics:
-    collection_interval: 60s
+    collection_interval: ${env:NRDOT_COLLECTION_INTERVAL:-60s}
+    root_path: ${env:HOST_PROC:-/proc}
     scrapers:
       process:
-        # Optimized metric set
+        mute_process_name_error: true
+        mute_process_exe_error: true
+        mute_process_io_error: true
         metrics:
           process.cpu.time:
             enabled: true
           process.memory.physical_usage:
             enabled: true
+          process.memory.virtual_usage:
+            enabled: true
           process.disk.io:
             enabled: true
-          # High-cardinality metrics disabled by default
           process.threads:
-            enabled: false
+            enabled: true
           process.open_file_descriptors:
-            enabled: false
-        
-        # Load exclusions from optimization config
-        exclude:
-          names: ${file:/etc/nrdot-plus/optimization.yaml:process_classification.noise.patterns}
-          match_type: regexp
-    
-    # Host-level metrics
-    cpu:
-      metrics:
-        system.cpu.utilization:
-          enabled: true
-    
-    memory:
-      metrics:
-        system.memory.utilization:
-          enabled: true
-    
-    disk:
-      metrics:
-        system.disk.io:
-          enabled: true
-        system.disk.io_time:
-          enabled: false
-    
-    network:
-      metrics:
-        system.network.io:
-          enabled: true
-        system.network.connections:
-          enabled: false
-    
-    load:
-      metrics:
-        system.cpu.load_average.1m:
-          enabled: true
+            enabled: true
+      
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+          system.cpu.time:
+            enabled: true
+          system.cpu.logical.count:
+            enabled: true
+      
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
+          system.memory.usage:
+            enabled: true
+      
+      disk:
+        metrics:
+          system.disk.io:
+            enabled: true
+          system.disk.operations:
+            enabled: true
+      
+      network:
+        metrics:
+          system.network.io:
+            enabled: true
+          system.network.packets:
+            enabled: true
+          system.network.errors:
+            enabled: true
+      
+      load:
+        metrics:
+          system.cpu.load_average.1m:
+            enabled: true
+          system.cpu.load_average.5m:
+            enabled: true
+          system.cpu.load_average.15m:
+            enabled: true
 
-  # Self-monitoring
-  prometheus:
+  # Internal metrics for self-monitoring
+  prometheus/internal:
     config:
       scrape_configs:
-        - job_name: 'nrdot-plus-self'
+        - job_name: 'otelcol'
           scrape_interval: 10s
           static_configs:
             - targets: ['localhost:8888']
 
 processors:
-  # Memory protection - MUST be first
+  # Memory protection (must be first)
   memory_limiter:
     check_interval: 1s
-    limit_mib: 256
-    spike_limit_mib: 64
+    limit_mib: ${env:NRDOT_MEMORY_LIMIT_MB:-512}
+    spike_limit_mib: ${env:NRDOT_MEMORY_SPIKE_MB:-128}
 
-  # Cloud resource detection
+  # Resource detection
   resourcedetection:
-    detectors: [env, system, docker, ec2, gcp, azure]
-    timeout: 2s
+    detectors: [env, system, os]
+    timeout: 5s
     override: false
-    system:
-      hostname_sources: ["os", "dns"]
 
-  # Add NRDOT-Plus metadata
-  attributes/nrdot:
+  # Add NRDOT metadata and service identification
+  attributes/nrdot_meta:
     actions:
+      - key: service.name
+        value: "nrdot-plus-host"
+        action: insert
       - key: nrdot.version
-        value: "2.0.0"
+        value: "4.2.0"
         action: upsert
       - key: nrdot.distribution
         value: "plus"
         action: upsert
-      - key: nrdot.ring
-        value: ${env:NRDOT_RING:-0}
+      - key: nrdot.experiment.ring
+        value: ${env:NRDOT_RING:-"0"}
         action: upsert
-      - key: service.name
-        value: "nrdot-plus-host"
+      - key: nrdot.profile.active
+        value: ${env:NRDOT_ACTIVE_PROFILE:-"balanced"}
+        action: upsert
+      - key: host.name
+        from_attribute: host.name
         action: insert
 
-  # Process importance scoring
-  transform/scoring:
+  # CPU utilization calculation (rate from cumulative)
+  metricstransform/cpu_utilization:
+    transforms:
+      - include: process.cpu.time
+        action: insert
+        new_name: process.cpu.utilization
+        operations:
+          - action: aggregate_labels
+            label_set: []
+            aggregation_type: rate
+          - action: experimental_scale_value
+            scale: 100.0
+
+  # Memory conversion to MB for easier reading
+  metricstransform/memory_mb:
+    transforms:
+      - include: process.memory.physical_usage
+        action: insert
+        new_name: process.memory.physical_usage_mb
+        operations:
+          - action: experimental_scale_value
+            scale: 0.000000953674  # Bytes to MB
+
+  # Process classification and tier assignment
+  attributes/process_classification:
+    actions:
+      # Initialize defaults
+      - key: process.tier
+        value: 6
+        action: insert
+      - key: process.importance
+        value: 0.3
+        action: insert
+      - key: process.classification
+        value: "other"
+        action: insert
+
+  # Enhanced process classification using transform
+  transform/tier_assignment:
+    error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:
-          # Default importance
-          - set(attributes["process.importance"], 0.3)
+          # Tier 1: Critical System (1.0)
+          - set(attributes["process.tier"], 1) where IsMatch(resource.attributes["process.executable.name"], "^(init|systemd|kernel|sshd)$")
+          - set(attributes["process.importance"], 1.0) where attributes["process.tier"] == 1
+          - set(attributes["process.classification"], "critical_system") where attributes["process.tier"] == 1
           
-          # Critical system processes (1.0)
-          - set(attributes["process.importance"], 1.0) 
-            where IsMatch(resource.attributes["process.executable.name"], "^(init|systemd|kernel|sshd)$")
+          # Tier 2: Databases (0.9)
+          - set(attributes["process.tier"], 2) where IsMatch(resource.attributes["process.executable.name"], "(postgres|mysql|mongo|redis|cassandra|elastic)")
+          - set(attributes["process.importance"], 0.9) where attributes["process.tier"] == 2
+          - set(attributes["process.classification"], "database") where attributes["process.tier"] == 2
           
-          # Databases (0.9)
-          - set(attributes["process.importance"], 0.9) 
-            where IsMatch(resource.attributes["process.executable.name"], "^(postgres|mysql|mongo|redis|cassandra|elastic)")
+          # Tier 3: Web Servers (0.8)
+          - set(attributes["process.tier"], 3) where IsMatch(resource.attributes["process.executable.name"], "(nginx|apache|httpd|haproxy|envoy)")
+          - set(attributes["process.importance"], 0.8) where attributes["process.tier"] == 3
+          - set(attributes["process.classification"], "web_server") where attributes["process.tier"] == 3
           
-          # Web/API servers (0.8)
-          - set(attributes["process.importance"], 0.8) 
-            where IsMatch(resource.attributes["process.executable.name"], "^(nginx|apache|httpd|haproxy|envoy)")
-          
-          # Application runtimes (0.6)
-          - set(attributes["process.importance"], 0.6) 
-            where IsMatch(resource.attributes["process.executable.name"], "^(java|python|node|ruby|dotnet|php)")
-          
-          # Monitoring agents (0.3)
-          - set(attributes["process.importance"], 0.3) 
-            where IsMatch(resource.attributes["process.executable.name"], "(newrelic|datadog|splunk|prometheus)")
+          # Tier 4: Applications (0.6)
+          - set(attributes["process.tier"], 4) where IsMatch(resource.attributes["process.executable.name"], "(java|python|node|ruby|dotnet|php)")
+          - set(attributes["process.importance"], 0.6) where attributes["process.tier"] == 4
+          - set(attributes["process.classification"], "application") where attributes["process.tier"] == 4
 
-  # Dynamic filtering based on profile
-  filter/optimization:
+  # Generate NRDOT KPI metrics
+  metricstransform/nrdot_kpis:
+    transforms:
+      # Total process count
+      - include: process.cpu.time
+        action: insert
+        new_name: nrdot_summary_total_processes
+        operations:
+          - action: aggregate_labels
+            label_set: []
+            aggregation_type: count
+      
+      # Process count by tier
+      - include: process.cpu.time
+        action: insert
+        new_name: nrdot_tier_process_count
+        operations:
+          - action: aggregate_labels
+            label_set: ["process.tier", "process.classification"]
+            aggregation_type: count
+      
+      # Total series estimate (6 metrics per process average)
+      - include: nrdot_summary_total_processes
+        action: insert
+        new_name: nrdot_summary_total_series
+        operations:
+          - action: experimental_scale_value
+            scale: 6.0
+
+  # Cost calculation ($0.25 per million datapoints)
+  metricstransform/cost_calculation:
+    transforms:
+      - include: nrdot_summary_total_series
+        action: insert
+        new_name: nrdot_cost_estimate_hourly
+        operations:
+          - action: experimental_scale_value
+            scale: 0.000015  # Series * 60 datapoints/hour * $0.25/1M = series * 0.000015
+
+  # Coverage metrics
+  metricstransform/coverage:
+    transforms:
+      - include: process.cpu.time
+        action: insert
+        new_name: nrdot_coverage_percentage
+        operations:
+          - action: aggregate_labels
+            label_set: []
+            aggregation_type: count
+          - action: experimental_scale_value
+            scale: 1.0  # Will be adjusted by control loop
+
+  # Experiment tracking
+  metricstransform/experiments:
+    transforms:
+      # Control group (ring 0)
+      - include: process.cpu.time
+        action: insert
+        new_name: nrdot_experiment_control_processes
+        operations:
+          - action: aggregate_labels
+            label_set: []
+            aggregation_type: count
+
+  # Intelligent filtering based on thresholds and importance
+  filter/smart_sampling:
     error_mode: ignore
     metrics:
       datapoint:
-        # Always keep critical processes
-        - 'attributes["process.importance"] >= 0.9'
-        
-        # Profile-based filtering (loaded from optimization.yaml)
-        - 'attributes["process.importance"] >= ${file:/etc/nrdot-plus/optimization.yaml:profiles.${file:/etc/nrdot-plus/optimization.yaml:state.active_profile}.thresholds.min_importance_score}'
+        # Always keep tier 1-2 (critical + database)
+        - 'attributes["process.tier"] <= 2'
+        # Keep high-importance processes
+        - 'attributes["process.importance"] >= ${env:NRDOT_MIN_IMPORTANCE:-0.5}'
+        # Apply resource thresholds for others
+        - 'name != "process.cpu.utilization" or value >= ${env:NRDOT_CPU_THRESHOLD:-1.0}'
+        - 'name != "process.memory.physical_usage" or value >= ${env:NRDOT_MEMORY_THRESHOLD_MB:-10} * 1048576'
 
-  # Resource-based filtering
-  filter/resources:
-    error_mode: ignore
-    metrics:
-      datapoint:
-        # CPU threshold
-        - 'name == "process.cpu.time" and value > ${file:/etc/nrdot-plus/optimization.yaml:profiles.${file:/etc/nrdot-plus/optimization.yaml:state.active_profile}.thresholds.cpu_threshold_percent}'
-        
-        # Memory threshold (convert MB to bytes)
-        - 'name == "process.memory.physical_usage" and value > (${file:/etc/nrdot-plus/optimization.yaml:profiles.${file:/etc/nrdot-plus/optimization.yaml:state.active_profile}.thresholds.memory_threshold_mb} * 1048576)'
-
-  # Top-K limiting per class
-  groupbyattrs:
-    keys:
-      - host.name
-      - process.executable.name
-      - process.owner
-
-  # KPI metric generation
-  transform/kpis:
-    metric_statements:
-      - context: metric
-        statements:
-          # Total series counter
-          - aggregate_on_attributes("count", attributes["nrdot.process.series.total"], ["host.name"]) 
-            where name == "process.cpu.time"
-
-  # Cost calculation
-  transform/cost:
-    metric_statements:
-      - context: datapoint
-        statements:
-          # Calculate hourly cost
-          - set(attributes["nrdot.estimated.cost"], 
-            attributes["nrdot.process.series.total"] * 
-            ${file:/etc/nrdot-plus/optimization.yaml:cost_model.per_million_datapoints} / 1000000 * 
-            3600 / ${file:/etc/nrdot-plus/optimization.yaml:cost_model.collection_interval_seconds})
-
-  # Batching for efficiency
+  # Batch processing for efficiency
   batch:
-    send_batch_size: 1000
-    timeout: 10s
-    send_batch_max_size: 2000
+    send_batch_size: ${env:NRDOT_BATCH_SIZE:-1000}
+    timeout: ${env:NRDOT_BATCH_TIMEOUT:-10s}
+    send_batch_max_size: ${env:NRDOT_BATCH_MAX_SIZE:-2000}
 
 exporters:
-  # New Relic OTLP export
+  # New Relic OTLP HTTP exporter
   otlphttp/newrelic:
     endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT:-https://otlp.nr-data.net}
     headers:
@@ -206,21 +284,22 @@ exporters:
       max_elapsed_time: 300s
     sending_queue:
       enabled: true
-      num_consumers: 10
+      num_consumers: 4
       queue_size: 1000
 
-  # Local metrics for control loop
+  # Prometheus for local monitoring and debugging
   prometheus:
     endpoint: "0.0.0.0:8888"
     namespace: nrdot
     const_labels:
       distribution: "plus"
+      version: "4.2.0"
     resource_to_telemetry_conversion:
       enabled: true
 
-  # Debug output (disabled by default)
-  debug:
-    verbosity: detailed
+  # Debug logging (disabled in production)
+  logging:
+    loglevel: ${env:OTEL_DEBUG_LOG_LEVEL:-debug}
     sampling_initial: 5
     sampling_thereafter: 100
 
@@ -228,52 +307,44 @@ service:
   extensions: [health_check, file_storage, memory_ballast]
   
   pipelines:
-    # Process metrics pipeline with optimization
-    metrics/process:
+    # Main metrics pipeline with full NRDOT processing
+    metrics/main:
       receivers: [hostmetrics]
       processors:
         - memory_limiter
         - resourcedetection
-        - attributes/nrdot
-        - transform/scoring
-        - filter/optimization
-        - filter/resources
-        - groupbyattrs
-        - transform/kpis
-        - transform/cost
+        - attributes/nrdot_meta
+        - metricstransform/cpu_utilization
+        - metricstransform/memory_mb
+        - attributes/process_classification
+        - transform/tier_assignment
+        - metricstransform/nrdot_kpis
+        - metricstransform/cost_calculation
+        - metricstransform/coverage
+        - metricstransform/experiments
+        - filter/smart_sampling
         - batch
-      exporters: [otlphttp/newrelic, prometheus]
-    
-    # Host metrics pipeline (no optimization)
-    metrics/host:
-      receivers: [hostmetrics]
+      exporters: 
+        - otlphttp/newrelic
+        - prometheus
+
+    # Internal monitoring pipeline
+    metrics/internal:
+      receivers: [prometheus/internal]
       processors:
         - memory_limiter
-        - resourcedetection
-        - attributes/nrdot
         - batch
-      exporters: [otlphttp/newrelic]
-    
-    # Self-monitoring pipeline
-    metrics/self:
-      receivers: [prometheus]
-      processors:
-        - memory_limiter
-        - attributes/nrdot
-        - batch
-      exporters: [otlphttp/newrelic]
+      exporters: 
+        - logging
 
   telemetry:
     logs:
       level: ${env:OTEL_LOG_LEVEL:-info}
       encoding: json
-      output_paths: 
+      output_paths:
         - stdout
         - /var/log/nrdot-plus/collector.log
-      initial_fields:
-        service: "nrdot-plus"
-        version: "2.0.0"
     
     metrics:
       level: detailed
-      address: localhost:8889
+      address: 0.0.0.0:8889

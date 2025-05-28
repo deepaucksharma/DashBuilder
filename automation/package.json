@@ -8,7 +8,8 @@
     "test": "jest",
     "create-keys": "node src/examples/create-api-keys.js",
     "verify-dashboard": "node src/examples/verify-dashboard.js",
-    "full-setup": "node src/examples/full-setup.js"
+    "full-setup": "node src/examples/full-setup.js",
+    "create-env": "node src/examples/create-env-keys.js"
   },
   "dependencies": {
     "puppeteer": "^21.6.0",
@@ -22,5 +23,8 @@
   "devDependencies": {
     "jest": "^29.7.0",
     "@types/jest": "^29.5.11"
-  }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

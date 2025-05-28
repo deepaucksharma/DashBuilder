@@ -1,0 +1,102 @@
+# Aggressive OpenTelemetry Collector Configuration Overlay
+# Maximum optimizations - focused coverage with maximum cost reduction
+
+receivers:
+  # Reduced collection frequency
+  hostmetrics:
+    collection_interval: 120s
+    # Minimal scrapers
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+          system.cpu.time:
+            enabled: false
+      memory:
+      disk:
+        metrics:
+          system.disk.io:
+            enabled: false
+      filesystem:
+        metrics:
+          system.filesystem.utilization:
+            enabled: true
+      network:
+        metrics:
+          system.network.io:
+            enabled: true
+          system.network.errors:
+            enabled: false
+          system.network.packets:
+            enabled: false
+      # Disable less critical scrapers
+      paging:
+        enabled: false
+      processes:
+        enabled: false
+        metrics:
+          system.processes.count:
+            enabled: false
+
+processors:
+  # Add strict filter processor
+  filter:
+    metrics:
+      include:
+        match_type: strict
+        metric_names:
+          - system.cpu.utilization
+          - system.memory.usage
+          - system.filesystem.utilization
+          - system.network.io
+          - nrdot.core.health
+          - nrdot.core.status
+  
+  # Aggressive sampling rate
+  probabilistic_sampler:
+    sampling_percentage: 20
+  
+  # Add aggressive aggregation
+  aggregate:
+    metrics:
+      - name: system.cpu.utilization
+        aggregation: average
+        dimensions: []
+      - name: system.memory.usage
+        aggregation: average
+        dimensions: []
+      - name: system.filesystem.utilization
+        aggregation: average
+        dimensions: []
+      - name: system.network.io
+        aggregation: sum
+        dimensions: []
+  
+  # Add metrics transform to reduce cardinality further
+  metricstransform:
+    transforms:
+      - include: system\..*
+        action: update
+        operations:
+          - action: aggregate_labels
+            aggregation_type: sum
+          - action: update_label
+            label: host.name
+            new_label: host_group
+            value_actions:
+              - value: .*
+                new_value: all_hosts
+
+exporters:
+  otlp:
+    compression: gzip
+    sending_queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 500
+    retry_on_failure:
+      enabled: true
+      initial_interval: 10s
+      max_interval: 60s
+      max_elapsed_time: 10m

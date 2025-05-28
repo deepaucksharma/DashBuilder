@@ -1,0 +1,101 @@
+# Conservative NRDOT Configuration - Moderate Optimization
+# Filters out system processes but keeps most application processes
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+    path: "/health"
+
+receivers:
+  hostmetrics:
+    collection_interval: 60s
+    scrapers:
+      process:
+        # Exclude only system processes
+        exclude:
+          names: 
+            - "^\\[.*\\]$"  # Kernel threads
+            - "^(kworker|ksoftirqd|migration|rcu_)"
+          match_type: regexp
+        
+        mute_process_name_error: true
+        mute_process_exe_error: true
+        mute_process_io_error: true
+    
+      cpu:
+      memory:
+      disk:
+      network:
+      filesystem:
+      load:
+
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'otel-collector'
+          scrape_interval: 30s
+          static_configs:
+            - targets: ['0.0.0.0:8888']
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1000
+    
+  # Simple filtering - remove processes with < 0.1% CPU
+  filter/metrics:
+    metrics:
+      metric:
+        - 'name == "process.cpu.utilization" and value < 0.001'
+    
+  resource:
+    attributes:
+      - key: experiment.name
+        value: conservative
+        action: insert
+      - key: experiment.profile
+        value: moderate-optimization
+        action: insert
+      - key: service.name
+        value: nrdot-conservative
+        action: insert
+      - key: service.version
+        value: "2.0"
+        action: insert
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+exporters:
+  otlp:
+    endpoint: "${NEW_RELIC_OTLP_ENDPOINT}"
+    headers:
+      api-key: "${NEW_RELIC_API_KEY}"
+    compression: gzip
+    
+  logging:
+    loglevel: info
+    sampling_initial: 5
+    sampling_thereafter: 50
+
+  prometheus:
+    endpoint: "0.0.0.0:8888"
+    metric_expiration: 5m
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics, prometheus]
+      processors: [memory_limiter, filter/metrics, batch, resource]
+      exporters: [otlp, prometheus, logging]
+      
+  extensions: [health_check]
+  
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: normal
+      address: 0.0.0.0:8888

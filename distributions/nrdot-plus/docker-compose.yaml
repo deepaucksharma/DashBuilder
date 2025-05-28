@@ -1,0 +1,173 @@
+version: '3.8'
+
+services:
+  # OpenTelemetry Collector for NRDOT Plus
+  nrdot-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile.otel
+    image: nrdot-plus:4.0.0
+    container_name: nrdot-plus-collector
+    restart: unless-stopped
+    
+    # Run as non-root user
+    user: "1001:0"
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - DAC_READ_SEARCH  # For process discovery
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.5'
+    
+    # Environment variables
+    environment:
+      # Required - must be set
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY:?License key required}
+      
+      # Optional with defaults
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-https://otlp.nr-data.net}
+      - OTEL_LOG_LEVEL=${OTEL_LOG_LEVEL:-info}
+      
+      # NRDOT configuration
+      - NRDOT_COLLECTION_INTERVAL=${NRDOT_COLLECTION_INTERVAL:-60s}
+      - NRDOT_RING=${NRDOT_RING:-0}
+      - NRDOT_ACTIVE_PROFILE=${NRDOT_ACTIVE_PROFILE:-balanced}
+      - NRDOT_MIN_IMPORTANCE=${NRDOT_MIN_IMPORTANCE:-0.5}
+      - NRDOT_CPU_THRESHOLD=${NRDOT_CPU_THRESHOLD:-10.0}
+      - NRDOT_MEMORY_THRESHOLD_MB=${NRDOT_MEMORY_THRESHOLD_MB:-100}
+      - NRDOT_TARGET_SERIES=${NRDOT_TARGET_SERIES:-5000}
+      - NRDOT_MAX_SERIES=${NRDOT_MAX_SERIES:-10000}
+      
+      # Host information
+      - HOSTNAME=${HOSTNAME:-docker-host}
+      
+      # Host filesystem paths for containerized deployment
+      - HOST_PROC=/host/proc
+      - HOST_SYS=/host/sys
+      - HOST_ETC=/host/etc
+      - HOST_VAR=/host/var
+      - HOST_RUN=/host/run
+    
+    # Volumes
+    volumes:
+      # Persistent storage
+      - nrdot-storage:/var/lib/nrdot-plus/storage
+      
+      # Logs
+      - nrdot-logs:/var/log/nrdot-plus
+      
+      # Host process discovery (critical for process monitoring)
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      
+      # Mount host filesystem for process executable names
+      - /:/hostfs:ro
+    
+    # Network
+    ports:
+      - "8888:8888"   # Prometheus metrics
+      - "13133:13133" # Health check
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:13133/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Control Loop Service (optional)
+  nrdot-control-loop:
+    image: alpine:3.19
+    container_name: nrdot-control-loop
+    restart: unless-stopped
+    depends_on:
+      nrdot-collector:
+        condition: service_healthy
+    
+    # Install dependencies and run control loop
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "apk add --no-cache bash curl jq yq &&
+       while true; do
+         echo 'Control loop would run here';
+         sleep 300;
+       done"
+    
+    environment:
+      - NRDOT_ENABLE_CONTROL_LOOP=${NRDOT_ENABLE_CONTROL_LOOP:-false}
+      - METRICS_URL=http://nrdot-collector:8888/metrics
+    
+    volumes:
+      - ./scripts:/scripts:ro
+      - nrdot-state:/var/lib/nrdot-plus/state
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Experiment Controller (optional)
+  nrdot-experiment:
+    image: alpine:3.19
+    container_name: nrdot-experiment
+    restart: unless-stopped
+    depends_on:
+      nrdot-collector:
+        condition: service_healthy
+    
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "apk add --no-cache bash curl jq &&
+       /scripts/experiment-controller.sh init &&
+       while true; do
+         /scripts/experiment-controller.sh collect;
+         sleep 300;
+       done"
+    
+    environment:
+      - NRDOT_EXPERIMENT_ENABLED=${NRDOT_EXPERIMENT_ENABLED:-false}
+      - METRICS_URL=http://nrdot-collector:8888/metrics
+    
+    volumes:
+      - ./scripts:/scripts:ro
+      - nrdot-state:/var/lib/nrdot-plus/state
+    
+    profiles:
+      - experiments
+
+# Volumes
+volumes:
+  nrdot-storage:
+    driver: local
+  nrdot-logs:
+    driver: local
+  nrdot-state:
+    driver: local
+
+# Networks (use default bridge)
+networks:
+  default:
+    driver: bridge

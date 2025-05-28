@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # Main NRDOT container with everything
+  nrdot-complete:
+    build:
+      context: .
+      dockerfile: Dockerfile.nrdot-working
+    container_name: nrdot-complete
+    restart: unless-stopped
+    environment:
+      # CRITICAL: These must be set correctly
+      - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_ACCOUNT_ID=${NEW_RELIC_ACCOUNT_ID}
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY}
+      - NEW_RELIC_REGION=${NEW_RELIC_REGION:-US}
+      
+      # OTLP Configuration
+      - NEW_RELIC_OTLP_ENDPOINT=${NEW_RELIC_OTLP_ENDPOINT:-otlp.nr-data.net:4317}
+      
+      # NRDOT Configuration
+      - NRDOT_PROFILE=${NRDOT_PROFILE:-balanced}
+      - NRDOT_TARGET_COVERAGE=${NRDOT_TARGET_COVERAGE:-95}
+      - NRDOT_COST_REDUCTION_TARGET=${NRDOT_COST_REDUCTION_TARGET:-70}
+      
+      # Debugging
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DEBUG_METRICS=${DEBUG_METRICS:-false}
+    
+    ports:
+      - "8090:80"      # Web Dashboard
+      - "3003:3000"    # API Server
+      - "8889:8888"    # Prometheus Metrics
+      - "13134:13133"  # Health Check
+      
+    volumes:
+      # Configuration
+      - ./configs:/app/configs:ro
+      - ./examples:/app/examples:ro
+      
+      # Persistent data
+      - nrdot-state:/var/lib/nrdot-plus
+      - nrdot-logs:/var/log
+      
+      # Scripts for debugging
+      - ./scripts/fix-zero-ingestion.sh:/usr/local/bin/fix-zero-ingestion.sh:ro
+      - ./scripts/generate-real-metrics.sh:/usr/local/bin/generate-real-metrics.sh:ro
+      - ./scripts/health-check-comprehensive.sh:/usr/local/bin/health-check-comprehensive.sh:ro
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 180s
+    
+    networks:
+      - nrdot-network
+
+  # Metrics Generator for continuous testing
+  metrics-generator:
+    image: alpine:latest
+    container_name: nrdot-metrics-gen
+    restart: unless-stopped
+    environment:
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY}
+      - NEW_RELIC_ACCOUNT_ID=${NEW_RELIC_ACCOUNT_ID}
+      - NEW_RELIC_REGION=${NEW_RELIC_REGION:-US}
+      - NRDOT_PROFILE=${NRDOT_PROFILE:-balanced}
+    
+    volumes:
+      - ./scripts/generate-real-metrics.sh:/generate-metrics.sh:ro
+      
+    command: ["/bin/sh", "-c", "apk add --no-cache bash curl jq && chmod +x /generate-metrics.sh && while true; do /generate-metrics.sh; sleep 60; done"]
+    
+    networks:
+      - nrdot-network
+    
+    depends_on:
+      - nrdot-complete
+
+  # Diagnostics container for troubleshooting
+  diagnostics:
+    image: alpine:latest
+    container_name: nrdot-diagnostics
+    restart: "no"
+    environment:
+      - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_ACCOUNT_ID=${NEW_RELIC_ACCOUNT_ID}
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY}
+      - NEW_RELIC_REGION=${NEW_RELIC_REGION:-US}
+    
+    volumes:
+      - ./scripts/fix-zero-ingestion.sh:/fix-ingestion.sh:ro
+      - diagnostics-output:/output
+      
+    command: ["/bin/sh", "-c", "apk add --no-cache bash curl jq && chmod +x /fix-ingestion.sh && /fix-ingestion.sh > /output/diagnostic-$(date +%Y%m%d-%H%M%S).log 2>&1"]
+    
+    networks:
+      - nrdot-network
+    
+    profiles:
+      - debug
+
+volumes:
+  nrdot-state:
+    driver: local
+  nrdot-logs:
+    driver: local
+  diagnostics-output:
+    driver: local
+
+networks:
+  nrdot-network:
+    driver: bridge

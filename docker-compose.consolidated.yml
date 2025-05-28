@@ -1,0 +1,388 @@
+version: '3.8'
+
+services:
+  # === DashBuilder Services ===
+  dashbuilder:
+    build:
+      context: .
+      dockerfile: Dockerfile.consolidated
+      target: dashbuilder
+    container_name: dashbuilder-app
+    restart: unless-stopped
+    environment:
+      # New Relic API Configuration
+      - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_ACCOUNT_ID=${NEW_RELIC_ACCOUNT_ID}
+      - NEW_RELIC_REGION=${NEW_RELIC_REGION:-US}
+      - NEW_RELIC_INGEST_KEY=${NEW_RELIC_INGEST_KEY}
+      # NRDOT v2 Configuration
+      - NRDOT_PROFILE=${NRDOT_PROFILE:-Conservative}
+      - NRDOT_TARGET_COVERAGE=${NRDOT_TARGET_COVERAGE:-95}
+      - NRDOT_COST_REDUCTION_TARGET=${NRDOT_COST_REDUCTION_TARGET:-40}
+      # Optional Configuration
+      - NR_GUARDIAN_CACHE_TTL=${NR_GUARDIAN_CACHE_TTL:-3600}
+      - NR_GUARDIAN_RATE_LIMIT_MAX=${NR_GUARDIAN_RATE_LIMIT_MAX:-25}
+      - NR_GUARDIAN_LOG_LEVEL=${NR_GUARDIAN_LOG_LEVEL:-info}
+      - NR_GUARDIAN_ENABLE_CACHE=${NR_GUARDIAN_ENABLE_CACHE:-true}
+      - NODE_ENV=production
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./examples:/app/examples:ro
+      - ./docker-output:/app/output
+    stdin_open: true
+    tty: true
+    command: ["bash"]
+    profiles:
+      - dashbuilder
+      - full
+      - development
+
+  # DashBuilder CLI service
+  dashbuilder-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile.consolidated
+      target: dashbuilder
+    container_name: dashbuilder-cli
+    environment:
+      - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_ACCOUNT_ID=${NEW_RELIC_ACCOUNT_ID}
+      - NEW_RELIC_REGION=${NEW_RELIC_REGION:-US}
+      - NEW_RELIC_INGEST_KEY=${NEW_RELIC_INGEST_KEY}
+      - NRDOT_PROFILE=${NRDOT_PROFILE:-Conservative}
+      - NRDOT_TARGET_COVERAGE=${NRDOT_TARGET_COVERAGE:-95}
+      - NRDOT_COST_REDUCTION_TARGET=${NRDOT_COST_REDUCTION_TARGET:-40}
+      - NR_GUARDIAN_CACHE_TTL=${NR_GUARDIAN_CACHE_TTL:-3600}
+      - NR_GUARDIAN_RATE_LIMIT_MAX=${NR_GUARDIAN_RATE_LIMIT_MAX:-25}
+      - NR_GUARDIAN_LOG_LEVEL=${NR_GUARDIAN_LOG_LEVEL:-info}
+      - NR_GUARDIAN_ENABLE_CACHE=${NR_GUARDIAN_ENABLE_CACHE:-true}
+      - NODE_ENV=production
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./examples:/app/examples:ro
+      - ./docker-output:/app/output
+    entrypoint: ["npm", "run"]
+    command: ["cli", "--"]
+    profiles:
+      - cli
+      - development
+
+  # === NRDOT Services ===
+  # Main NRDOT container with everything
+  nrdot-complete:
+    build:
+      context: .
+      dockerfile: Dockerfile.consolidated
+      target: nrdot
+    container_name: nrdot-complete
+    restart: unless-stopped
+    environment:
+      # CRITICAL: These must be set correctly
+      - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_ACCOUNT_ID=${NEW_RELIC_ACCOUNT_ID}
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY:-${NEW_RELIC_INGEST_KEY:-${NEW_RELIC_API_KEY}}}
+      - NEW_RELIC_REGION=${NEW_RELIC_REGION:-US}
+      # OTLP Configuration
+      - NEW_RELIC_OTLP_ENDPOINT=${NEW_RELIC_OTLP_ENDPOINT:-otlp.nr-data.net:4317}
+      # NRDOT Configuration
+      - NRDOT_PROFILE=${NRDOT_PROFILE:-balanced}
+      - NRDOT_TARGET_COVERAGE=${NRDOT_TARGET_COVERAGE:-95}
+      - NRDOT_COST_REDUCTION_TARGET=${NRDOT_COST_REDUCTION_TARGET:-70}
+      # Debugging
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DEBUG_METRICS=${DEBUG_METRICS:-false}
+    ports:
+      - "8080:80"      # Web Dashboard
+      - "3000:3000"    # API Server
+      - "3001:3001"    # WebSocket Server
+      - "8888:8888"    # Prometheus Metrics
+      - "13133:13133"  # Health Check
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+      - "55679:55679"  # zPages
+    volumes:
+      # Configuration
+      - ./configs:/app/configs:ro
+      - ./examples:/app/examples:ro
+      # Persistent data
+      - nrdot-state:/var/lib/nrdot-plus
+      - nrdot-logs:/var/log
+      # Scripts for debugging
+      - ./scripts/fix-zero-ingestion.sh:/usr/local/bin/fix-ingestion:ro
+      - ./scripts/generate-real-metrics.sh:/usr/local/bin/generate-metrics:ro
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/health-check-comprehensive.sh"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 180s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+    networks:
+      - nrdot-network
+    profiles:
+      - nrdot
+      - full
+      - production
+
+  # Dedicated OpenTelemetry Collector
+  otel-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile.consolidated
+      target: otel
+    container_name: nrdot-otel
+    restart: unless-stopped
+    environment:
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY:-${NEW_RELIC_INGEST_KEY:-${NEW_RELIC_API_KEY}}}
+      - NEW_RELIC_OTLP_ENDPOINT=${NEW_RELIC_OTLP_ENDPOINT:-otlp.nr-data.net:4317}
+      - NEW_RELIC_REGION=${NEW_RELIC_REGION:-US}
+      - GOGC=80
+      - GOMEMLIMIT=4GiB
+    ports:
+      - "14317:4317"   # OTLP gRPC
+      - "14318:4318"   # OTLP HTTP
+      - "18888:8888"   # Metrics
+      - "11777:1777"   # pprof
+    volumes:
+      - ./configs/otel-config-optimized.yaml:/etc/otel/config.yaml:ro
+      - otel-data:/var/lib/otel
+    networks:
+      - nrdot-network
+    profiles:
+      - otel
+      - full
+      - production
+
+  # === Monitoring Services ===
+  # Metrics Generator for testing
+  metrics-generator:
+    image: alpine:latest
+    container_name: nrdot-metrics-gen
+    restart: unless-stopped
+    environment:
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY}
+      - NEW_RELIC_ACCOUNT_ID=${NEW_RELIC_ACCOUNT_ID}
+      - NEW_RELIC_REGION=${NEW_RELIC_REGION:-US}
+      - NRDOT_PROFILE=${NRDOT_PROFILE:-balanced}
+    volumes:
+      - ./scripts/generate-real-metrics.sh:/generate-metrics.sh:ro
+    command: ["/bin/sh", "-c", "apk add --no-cache bash curl && chmod +x /generate-metrics.sh && /generate-metrics.sh"]
+    networks:
+      - nrdot-network
+    depends_on:
+      - nrdot-complete
+    profiles:
+      - monitoring
+      - testing
+
+  # Ingestion Monitor
+  ingestion-monitor:
+    image: node:18-alpine
+    container_name: nrdot-ingestion-monitor
+    restart: unless-stopped
+    environment:
+      - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_ACCOUNT_ID=${NEW_RELIC_ACCOUNT_ID}
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - monitor-data:/data
+    working_dir: /app
+    command: |
+      sh -c '
+        apk add --no-cache bash curl
+        cd scripts && npm install
+        
+        # Monitor ingestion every minute
+        while true; do
+          echo "[$(date)] Checking ingestion..."
+          
+          # Check for NRDOT metrics
+          node src/cli.js nrql validate "SELECT count(*) FROM Metric WHERE metricName LIKE '\''nrdot%'\'' SINCE 5 minutes ago" > /data/ingestion-check.log 2>&1
+          
+          # Check for any metrics
+          node src/cli.js nrql validate "SELECT count(*) FROM Metric SINCE 5 minutes ago" >> /data/ingestion-check.log 2>&1
+          
+          # Alert if no data
+          if ! grep -q "resultCount: [1-9]" /data/ingestion-check.log; then
+            echo "[$(date)] WARNING: No metrics found!" >> /data/alerts.log
+          else
+            echo "[$(date)] Metrics are flowing" >> /data/success.log
+          fi
+          
+          sleep 60
+        done
+      '
+    networks:
+      - nrdot-network
+    profiles:
+      - monitoring
+      - testing
+
+  # Prometheus for local monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: nrdot-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - nrdot-network
+    profiles:
+      - monitoring
+      - full
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: nrdot-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=nrdot
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=fifemon-graphql-datasource
+    ports:
+      - "3002:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./configs/grafana-provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - nrdot-network
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+      - full
+
+  # === Experiment Services ===
+  # Baseline NRDOT (no optimizations)
+  nrdot-baseline:
+    build:
+      context: .
+      dockerfile: Dockerfile.consolidated
+      target: otel
+    container_name: nrdot-baseline
+    restart: unless-stopped
+    environment:
+      - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_OTLP_ENDPOINT=${NEW_RELIC_OTLP_ENDPOINT:-otlp.nr-data.net:4317}
+      - EXPERIMENT_NAME=baseline
+      - NRDOT_PROFILE=baseline
+      - CONFIG_FILE=/etc/nrdot-collector/collector-baseline.yaml
+    volumes:
+      - ./configs:/etc/nrdot-collector:ro
+      - ./logs/baseline:/var/log/nrdot
+    ports:
+      - "8881:8888"    # Metrics endpoint
+      - "13134:13133"  # Health check
+    networks:
+      - nrdot-network
+    profiles:
+      - experiments
+      - testing
+
+  # Conservative NRDOT (moderate optimization)
+  nrdot-conservative:
+    build:
+      context: .
+      dockerfile: Dockerfile.consolidated
+      target: otel
+    container_name: nrdot-conservative
+    restart: unless-stopped
+    environment:
+      - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_OTLP_ENDPOINT=${NEW_RELIC_OTLP_ENDPOINT:-otlp.nr-data.net:4317}
+      - EXPERIMENT_NAME=conservative
+      - NRDOT_PROFILE=conservative
+      - CONFIG_FILE=/etc/nrdot-collector/collector-conservative.yaml
+    volumes:
+      - ./configs:/etc/nrdot-collector:ro
+      - ./logs/conservative:/var/log/nrdot
+    ports:
+      - "8883:8888"    # Metrics endpoint
+      - "13135:13133"  # Health check
+    networks:
+      - nrdot-network
+    profiles:
+      - experiments
+      - testing
+
+  # Aggressive NRDOT (maximum optimization)
+  nrdot-aggressive:
+    build:
+      context: .
+      dockerfile: Dockerfile.consolidated
+      target: otel
+    container_name: nrdot-aggressive
+    restart: unless-stopped
+    environment:
+      - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_OTLP_ENDPOINT=${NEW_RELIC_OTLP_ENDPOINT:-otlp.nr-data.net:4317}
+      - EXPERIMENT_NAME=aggressive
+      - NRDOT_PROFILE=aggressive
+      - CONFIG_FILE=/etc/nrdot-collector/collector-aggressive.yaml
+    volumes:
+      - ./configs:/etc/nrdot-collector:ro
+      - ./logs/aggressive:/var/log/nrdot
+    ports:
+      - "8884:8888"    # Metrics endpoint
+      - "13136:13133"  # Health check
+    networks:
+      - nrdot-network
+    profiles:
+      - experiments
+      - testing
+
+  # === Debug Services ===
+  # Diagnostics container
+  diagnostics:
+    image: alpine:latest
+    container_name: nrdot-diagnostics
+    restart: "no"
+    environment:
+      - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - NEW_RELIC_ACCOUNT_ID=${NEW_RELIC_ACCOUNT_ID}
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY}
+      - NEW_RELIC_REGION=${NEW_RELIC_REGION:-US}
+    volumes:
+      - ./scripts/fix-zero-ingestion.sh:/fix-ingestion.sh:ro
+      - diagnostics-output:/output
+    command: ["/bin/sh", "-c", "apk add --no-cache bash curl jq && chmod +x /fix-ingestion.sh && /fix-ingestion.sh && cp /tmp/ingestion-diagnostic-*.txt /output/"]
+    networks:
+      - nrdot-network
+    profiles:
+      - debug
+
+volumes:
+  nrdot-state:
+    driver: local
+  nrdot-logs:
+    driver: local
+  otel-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  monitor-data:
+    driver: local
+  diagnostics-output:
+    driver: local
+
+networks:
+  nrdot-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

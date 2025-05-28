@@ -1,0 +1,158 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        
+  hostmetrics:
+    collection_interval: 10s
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
+      process:
+        include:
+          match_type: regexp
+          names: [".*"]
+        metrics:
+          process.cpu.utilization:
+            enabled: true
+          process.memory.usage:
+            enabled: true
+
+processors:
+  # EWMA smoothing for stability
+  metricstransform/ewma:
+    transforms:
+      - include: system.cpu.utilization
+        match_type: strict
+        action: update
+        new_name: system.cpu.utilization.smoothed
+        operations:
+          - action: experimental_scale_value
+            experimental_scale: 0.7  # EWMA factor
+            
+      - include: system.memory.utilization
+        match_type: strict
+        action: update
+        new_name: system.memory.utilization.smoothed
+        operations:
+          - action: experimental_scale_value
+            experimental_scale: 0.7
+
+  # KPI calculations
+  metricstransform/kpis:
+    transforms:
+      # Coverage metric
+      - include: process.cpu.utilization
+        match_type: regexp
+        action: insert
+        new_name: nrdot.coverage
+        operations:
+          - action: aggregate_labels
+            label_set: []
+            aggregation_type: count
+            
+      # Cost estimation
+      - include: process.memory.usage
+        match_type: regexp
+        action: insert
+        new_name: nrdot.cost.estimate
+        operations:
+          - action: aggregate_labels
+            label_set: []
+            aggregation_type: sum
+
+  # Optimization profiles
+  filter/baseline:
+    metrics:
+      include:
+        match_type: regexp
+        expressions:
+          - ".*"  # Include all metrics
+
+  filter/moderate:
+    metrics:
+      include:
+        match_type: regexp
+        expressions:
+          - "system\\..*"
+          - "process\\..*"
+          - "nrdot\\..*"
+      exclude:
+        match_type: strict
+        metric_names:
+          - process.cpu.time
+          - process.disk.io
+
+  filter/aggressive:
+    metrics:
+      include:
+        match_type: strict
+        metric_names:
+          - system.cpu.utilization.smoothed
+          - system.memory.utilization.smoothed
+          - nrdot.coverage
+          - nrdot.cost.estimate
+          - process.cpu.utilization
+          - process.memory.usage
+
+  # Add metadata
+  attributes:
+    actions:
+      - key: nrdot.version
+        value: "2.0"
+        action: insert
+      - key: nrdot.profile
+        value: "${NRDOT_PROFILE}"
+        action: insert
+      - key: nrdot.experiment
+        value: "true"
+        action: insert
+
+  batch:
+    timeout: 10s
+    send_batch_size: 1000
+
+exporters:
+  otlp/newrelic:
+    endpoint: "${NEW_RELIC_OTLP_ENDPOINT}"
+    headers:
+      api-key: "${NEW_RELIC_API_KEY}"
+    compression: gzip
+    
+  debug:
+    verbosity: normal
+    sampling_initial: 10
+    sampling_thereafter: 100
+
+service:
+  pipelines:
+    metrics/baseline:
+      receivers: [hostmetrics]
+      processors: [metricstransform/ewma, metricstransform/kpis, filter/baseline, attributes, batch]
+      exporters: [otlp/newrelic, debug]
+      
+    metrics/moderate:
+      receivers: [hostmetrics]
+      processors: [metricstransform/ewma, metricstransform/kpis, filter/moderate, attributes, batch]
+      exporters: [otlp/newrelic, debug]
+      
+    metrics/aggressive:
+      receivers: [hostmetrics]
+      processors: [metricstransform/ewma, metricstransform/kpis, filter/aggressive, attributes, batch]
+      exporters: [otlp/newrelic, debug]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888

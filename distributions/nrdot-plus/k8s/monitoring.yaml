@@ -1,0 +1,91 @@
+# ServiceMonitor for Prometheus Operator
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nrdot-collector
+  namespace: nrdot-system
+  labels:
+    app.kubernetes.io/name: nrdot
+    app.kubernetes.io/component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nrdot
+      app.kubernetes.io/component: metrics
+  endpoints:
+    - port: prometheus
+      interval: 30s
+      path: /metrics
+      scrapeTimeout: 10s
+---
+# PrometheusRule for alerting
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nrdot-alerts
+  namespace: nrdot-system
+  labels:
+    app.kubernetes.io/name: nrdot
+    app.kubernetes.io/component: monitoring
+spec:
+  groups:
+    - name: nrdot.rules
+      interval: 30s
+      rules:
+        - alert: NRDOTCollectorDown
+          expr: up{job="nrdot-collector"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: nrdot
+          annotations:
+            summary: "NRDOT collector is down on {{ $labels.instance }}"
+            description: "NRDOT collector has been down for more than 5 minutes."
+        
+        - alert: NRDOTHighErrorRate
+          expr: rate(otelcol_processor_batch_batch_send_size_count{processor="batch"}[5m]) > 100
+          for: 10m
+          labels:
+            severity: warning
+            component: nrdot
+          annotations:
+            summary: "High error rate in NRDOT processor"
+            description: "NRDOT batch processor is experiencing high error rate: {{ $value }}"
+        
+        - alert: NRDOTHighMemoryUsage
+          expr: (otelcol_process_runtime_total_sys_memory_bytes / otelcol_process_runtime_total_alloc_bytes) > 0.9
+          for: 15m
+          labels:
+            severity: warning
+            component: nrdot
+          annotations:
+            summary: "NRDOT collector high memory usage"
+            description: "NRDOT collector is using more than 90% of allocated memory"
+        
+        - alert: NRDOTExporterFailure
+          expr: rate(otelcol_exporter_send_failed_metric_points{exporter="otlp"}[5m]) > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: nrdot
+          annotations:
+            summary: "NRDOT exporter failing to send metrics"
+            description: "NRDOT OTLP exporter is failing to send metrics to New Relic"
+---
+# PodMonitor for direct pod metrics
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: nrdot-pods
+  namespace: nrdot-system
+  labels:
+    app.kubernetes.io/name: nrdot
+    app.kubernetes.io/component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nrdot
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics

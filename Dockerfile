@@ -43,6 +43,13 @@ COPY orchestrator ./orchestrator
 COPY pkg ./pkg
 COPY scripts ./scripts
 
+# Install dependencies in scripts workspace
+WORKDIR /app/scripts
+RUN npm install --legacy-peer-deps
+
+# Back to app root
+WORKDIR /app
+
 # Make scripts executable
 RUN chmod +x setup.sh && \
     find scripts -name "*.sh" -type f -exec chmod +x {} \;
@@ -69,8 +76,12 @@ RUN echo '#!/bin/bash' > /app/start.sh && \
 ENV NODE_ENV=production
 ENV NR_GUARDIAN_LOG_LEVEL=info
 
-# Set the startup script as entrypoint
-ENTRYPOINT ["/app/start.sh"]
+# Copy entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
-# Default command - bash shell
-CMD ["bash"]
+# Set entrypoint with comprehensive logging
+ENTRYPOINT ["/docker-entrypoint.sh"]
+
+# Default command - keep container running
+CMD []

@@ -1,0 +1,52 @@
+# Simplified Baseline NRDOT Configuration
+# Minimal config to get collector running
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+    path: "/health"
+
+receivers:
+  hostmetrics:
+    collection_interval: 60s
+    scrapers:
+      process:
+      cpu:
+      memory:
+      disk:
+      network:
+      filesystem:
+      load:
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1000
+  
+  resource:
+    attributes:
+      - key: experiment.name
+        value: baseline
+        action: insert
+      - key: service.name
+        value: nrdot-baseline
+        action: insert
+
+exporters:
+  otlp:
+    endpoint: "${NEW_RELIC_OTLP_ENDPOINT}"
+    headers:
+      api-key: "${NEW_RELIC_LICENSE_KEY}"
+    compression: gzip
+    
+  logging:
+    loglevel: info
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      processors: [batch, resource]
+      exporters: [otlp, logging]
+      
+  extensions: [health_check]

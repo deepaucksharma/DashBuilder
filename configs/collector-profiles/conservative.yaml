@@ -1,0 +1,39 @@
+# Conservative OpenTelemetry Collector Configuration Overlay
+# Moderate optimizations - maintains high coverage with some cost reduction
+
+receivers:
+  # Moderate collection frequency
+  hostmetrics:
+    collection_interval: 60s
+
+processors:
+  # Add filter processor for basic filtering
+  filter:
+    metrics:
+      include:
+        match_type: regexp
+        metric_names:
+          - .*cpu.*
+          - .*memory.*
+          - .*disk.*
+          - .*network.*
+          - .*process.*
+          - system\..*
+          - nrdot\..*
+  
+  # Moderate sampling rate
+  probabilistic_sampler:
+    sampling_percentage: 80
+
+exporters:
+  otlp:
+    compression: gzip
+    sending_queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 500
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 5m

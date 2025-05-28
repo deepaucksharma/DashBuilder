@@ -1,0 +1,34 @@
+# Baseline OpenTelemetry Collector Configuration Overlay
+# No optimizations - collects and forwards everything
+
+receivers:
+  # Increase collection frequency for maximum coverage
+  hostmetrics:
+    collection_interval: 30s
+    scrapers:
+      # Enable all scrapers with default settings
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+      disk:
+      filesystem:
+      memory:
+      network:
+      paging:
+      processes:
+      load:
+
+processors:
+  # No filtering processors
+
+exporters:
+  # No compression or batching optimizations
+  otlp:
+    sending_queue:
+      enabled: false
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 10s
+      max_elapsed_time: 3m

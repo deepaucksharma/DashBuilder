@@ -1,0 +1,66 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: nrdot-system
+
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - configmap.yaml
+  - secret.yaml
+  - daemonset.yaml
+  - service.yaml
+  - monitoring.yaml
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/name: nrdot
+  app.kubernetes.io/version: v2.0.0
+  app.kubernetes.io/managed-by: kustomize
+
+# Patches for different environments
+patches:
+  # Production patch - higher resources, more replicas
+  - target:
+      kind: DaemonSet
+      name: nrdot-collector
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 1Gi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: 1000m
+
+# Config generation for different environments
+configMapGenerator:
+  - name: nrdot-config
+    behavior: merge
+    files:
+      - collector-config.yaml=../config/config-functional-complete.yaml
+      - optimization.yaml=../config/optimization.yaml
+
+# Secret generation (for local testing only)
+secretGenerator:
+  - name: nrdot-license
+    behavior: replace
+    literals:
+      - license-key=YOUR_LICENSE_KEY
+
+# Images customization
+images:
+  - name: otel/opentelemetry-collector-contrib
+    newTag: 0.91.0
+
+# Replacements for environment-specific values
+replacements:
+  - source:
+      kind: ConfigMap
+      name: nrdot-config
+      fieldPath: data.collector-config\.yaml
+    targets:
+      - select:
+          kind: DaemonSet
+          name: nrdot-collector
+        fieldPaths:
+          - spec.template.spec.volumes.[name=config].configMap.name

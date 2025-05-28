@@ -127,31 +127,19 @@ export class NerdGraphClient {
   }
 
   async getDashboards(accountId, limit = 100) {
+    // Use string interpolation for the query since variables in entitySearch are problematic
     const gql = `
-      query($accountId: Int!, $limit: Int!) {
+      query {
         actor {
-          entitySearch(query: "accountId = $accountId AND type = 'DASHBOARD'") {
-            results(limit: $limit) {
+          entitySearch(query: "accountId = ${parseInt(accountId)} AND type = 'DASHBOARD'") {
+            results {
               entities {
                 guid
                 name
-                ... on DashboardEntity {
+                ... on DashboardEntityOutline {
+                  accountId
                   createdAt
                   updatedAt
-                  permissions
-                  pages {
-                    name
-                    widgets {
-                      title
-                      configuration {
-                        ... on WidgetNrqlConfiguration {
-                          nrql {
-                            query
-                          }
-                        }
-                      }
-                    }
-                  }
                 }
               }
             }
@@ -160,8 +148,11 @@ export class NerdGraphClient {
       }
     `;
 
-    const result = await this.query(gql, { accountId: parseInt(accountId), limit });
-    return result.actor.entitySearch.results.entities;
+    const result = await this.query(gql, {});
+    const entities = result.actor.entitySearch.results.entities || [];
+    
+    // Return only the requested number of dashboards
+    return entities.slice(0, limit);
   }
 
   async getDashboard(guid) {
@@ -185,13 +176,7 @@ export class NerdGraphClient {
                     width
                     height
                   }
-                  configuration {
-                    ... on WidgetNrqlConfiguration {
-                      nrql {
-                        query
-                      }
-                    }
-                  }
+                  rawConfiguration
                   visualization {
                     id
                   }

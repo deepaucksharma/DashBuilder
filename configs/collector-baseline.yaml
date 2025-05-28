@@ -1,0 +1,98 @@
+# Baseline NRDOT Configuration - No Optimizations
+# This configuration collects ALL process metrics without any filtering
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+    path: "/health"
+
+receivers:
+  # Collect ALL process metrics without filtering
+  hostmetrics:
+    collection_interval: 60s
+    scrapers:
+      process:
+        # No exclusions - collect everything
+        mute_process_name_error: false
+        mute_process_exe_error: false
+        mute_process_io_error: false
+    
+      # Other system metrics
+      cpu:
+      memory:
+      disk:
+      network:
+      filesystem:
+      load:
+
+  # Prometheus metrics endpoint
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'otel-collector'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['0.0.0.0:8888']
+
+processors:
+  # Basic batch processing
+  batch:
+    timeout: 10s
+    send_batch_size: 1000
+    
+  # Add resource attributes
+  resource:
+    attributes:
+      - key: experiment.name
+        value: baseline
+        action: insert
+      - key: experiment.profile
+        value: no-optimization
+        action: insert
+      - key: service.name
+        value: nrdot-baseline
+        action: insert
+      - key: service.version
+        value: "2.0"
+        action: insert
+
+  # Memory limiter to prevent OOM
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+exporters:
+  # Send to New Relic
+  otlp:
+    endpoint: "${NEW_RELIC_OTLP_ENDPOINT}"
+    headers:
+      api-key: "${NEW_RELIC_API_KEY}"
+    compression: gzip
+    
+  # Debug logging
+  logging:
+    loglevel: info
+    sampling_initial: 10
+    sampling_thereafter: 100
+
+  # Prometheus metrics
+  prometheus:
+    endpoint: "0.0.0.0:8888"
+    metric_expiration: 5m
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics, prometheus]
+      processors: [memory_limiter, batch, resource]
+      exporters: [otlp, prometheus, logging]
+      
+  extensions: [health_check]
+  
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888

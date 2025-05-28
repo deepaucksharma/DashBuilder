@@ -11,12 +11,17 @@ OTEL_EXPORTER_OTLP_ENDPOINT="https://otlp.nr-data.net"
 #OTEL_EXPORTER_OTLP_ENDPOINT="https://otlp.eu01.nr-data.net"
 
 # Optimization settings
-NRDOT_PROFILE="balanced"
+NRDOT_ACTIVE_PROFILE="balanced"
 NRDOT_TARGET_SERIES="5000"
 NRDOT_MAX_SERIES="10000"
 NRDOT_MIN_COVERAGE="0.95"
 NRDOT_MAX_COST_HOUR="0.10"
 NRDOT_CHECK_INTERVAL="30"
+
+# Profile-specific settings (used by collector)
+NRDOT_MIN_IMPORTANCE="0.5"
+NRDOT_CPU_THRESHOLD="10.0"
+NRDOT_MEMORY_THRESHOLD_MB="100"
 
 # Cost model
 NRDOT_COST_CURRENCY="USD"
@@ -26,7 +31,10 @@ NRDOT_BILLING_MODEL="datapoints"
 # Control loop
 NRDOT_ENABLE_CONTROL_LOOP="true"
 
-# Experiment ring (0-7, automatically assigned by installer)
+# Collector optimization mode
+NRDOT_OPTIMIZATION_MODE="dynamic"
+
+# Experiment ring (0-100, for gradual rollouts)
 NRDOT_RING="0"
 
 # Webhook URL for notifications (optional)

@@ -1,0 +1,87 @@
+# Balanced OpenTelemetry Collector Configuration Overlay
+# Balanced optimizations - good coverage with significant cost reduction
+
+receivers:
+  # Standard collection frequency
+  hostmetrics:
+    collection_interval: 60s
+    # Selective scrapers
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+          system.cpu.time:
+            enabled: false
+      disk:
+      filesystem:
+        metrics:
+          system.filesystem.utilization:
+            enabled: true
+      memory:
+      network:
+        metrics:
+          system.network.io:
+            enabled: true
+          system.network.errors:
+            enabled: true
+          system.network.packets:
+            enabled: false
+      paging:
+      processes:
+        metrics:
+          system.processes.count:
+            enabled: true
+          system.processes.created:
+            enabled: false
+
+processors:
+  # Add filter processor with balanced filtering
+  filter:
+    metrics:
+      include:
+        match_type: regexp
+        metric_names:
+          - .*cpu.*utilization
+          - .*memory.*usage
+          - .*disk.*utilization
+          - .*network.*io
+          - .*network.*errors
+          - system\.processes\.count
+          - nrdot\..*
+  
+  # Balanced sampling rate
+  probabilistic_sampler:
+    sampling_percentage: 50
+  
+  # Add aggregation to reduce cardinality
+  aggregate:
+    metrics:
+      - name: system.cpu.utilization
+        aggregation: average
+        dimensions:
+          - cpu
+      - name: system.memory.usage
+        aggregation: average
+      - name: system.filesystem.utilization
+        aggregation: average
+        dimensions:
+          - device
+      - name: system.network.io
+        aggregation: sum
+        dimensions:
+          - direction
+          - device
+
+exporters:
+  otlp:
+    compression: gzip
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 1000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 5m

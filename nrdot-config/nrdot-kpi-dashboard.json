@@ -1,0 +1,133 @@
+{
+  "name": "NRDOT v2 KPI Monitoring",
+  "description": "Real-time KPI tracking for optimization experiments",
+  "pages": [
+    {
+      "name": "KPI Overview",
+      "widgets": [
+        {
+          "title": "Current Optimization Profile",
+          "layout": { "column": 1, "row": 1, "width": 4, "height": 3 },
+          "visualization": { "id": "viz.billboard" },
+          "rawConfiguration": {
+            "nrqlQueries": [{
+              "accountId": 4430445,
+              "query": "SELECT latest(nrdot.profile) as 'Current Profile' FROM Metric WHERE nrdot.version = '2.0' SINCE 5 minutes ago"
+            }]
+          }
+        },
+        {
+          "title": "Process Coverage %",
+          "layout": { "column": 5, "row": 1, "width": 4, "height": 3 },
+          "visualization": { "id": "viz.billboard" },
+          "rawConfiguration": {
+            "nrqlQueries": [{
+              "accountId": 4430445,
+              "query": "SELECT average(nrdot.coverage) as 'Coverage %' FROM Metric WHERE nrdot.version = '2.0' SINCE 30 minutes ago"
+            }],
+            "thresholds": [
+              { "value": 95, "alertSeverity": "SUCCESS" },
+              { "value": 90, "alertSeverity": "WARNING" },
+              { "value": 0, "alertSeverity": "CRITICAL" }
+            ]
+          }
+        },
+        {
+          "title": "Cost Reduction %",
+          "layout": { "column": 9, "row": 1, "width": 4, "height": 3 },
+          "visualization": { "id": "viz.billboard" },
+          "rawConfiguration": {
+            "nrqlQueries": [{
+              "accountId": 4430445,
+              "query": "SELECT average(nrdot.cost.estimate) as 'Cost Reduction %' FROM Metric WHERE nrdot.version = '2.0' SINCE 30 minutes ago"
+            }],
+            "thresholds": [
+              { "value": 70, "alertSeverity": "SUCCESS" },
+              { "value": 50, "alertSeverity": "WARNING" },
+              { "value": 0, "alertSeverity": "CRITICAL" }
+            ]
+          }
+        },
+        {
+          "title": "CPU Utilization (Smoothed)",
+          "layout": { "column": 1, "row": 4, "width": 6, "height": 3 },
+          "visualization": { "id": "viz.line" },
+          "rawConfiguration": {
+            "nrqlQueries": [{
+              "accountId": 4430445,
+              "query": "SELECT average(system.cpu.utilization.smoothed) FROM Metric WHERE nrdot.version = '2.0' TIMESERIES SINCE 1 hour ago"
+            }]
+          }
+        },
+        {
+          "title": "Memory Utilization (Smoothed)",
+          "layout": { "column": 7, "row": 4, "width": 6, "height": 3 },
+          "visualization": { "id": "viz.line" },
+          "rawConfiguration": {
+            "nrqlQueries": [{
+              "accountId": 4430445,
+              "query": "SELECT average(system.memory.utilization.smoothed) FROM Metric WHERE nrdot.version = '2.0' TIMESERIES SINCE 1 hour ago"
+            }]
+          }
+        },
+        {
+          "title": "Profile Switches",
+          "layout": { "column": 1, "row": 7, "width": 4, "height": 3 },
+          "visualization": { "id": "viz.line" },
+          "rawConfiguration": {
+            "nrqlQueries": [{
+              "accountId": 4430445,
+              "query": "SELECT count(*) FROM Metric WHERE nrdot.profile_change = 1 TIMESERIES SINCE 1 hour ago"
+            }]
+          }
+        },
+        {
+          "title": "Top Processes by CPU",
+          "layout": { "column": 5, "row": 7, "width": 8, "height": 3 },
+          "visualization": { "id": "viz.table" },
+          "rawConfiguration": {
+            "nrqlQueries": [{
+              "accountId": 4430445,
+              "query": "SELECT average(process.cpu.utilization) as 'CPU %', average(process.memory.usage) as 'Memory MB' FROM Metric WHERE nrdot.version = '2.0' FACET process.name SINCE 10 minutes ago LIMIT 10"
+            }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Experiment Metrics",
+      "widgets": [
+        {
+          "title": "Experiment Status",
+          "layout": { "column": 1, "row": 1, "width": 12, "height": 3 },
+          "visualization": { "id": "viz.markdown" },
+          "rawConfiguration": {
+            "text": "# NRDOT v2 Optimization Experiments\n\n## Active Profiles:\n- **Baseline**: All metrics collected (100% coverage)\n- **Moderate**: System + Key process metrics (60% reduction)\n- **Aggressive**: Only critical metrics (85% reduction)\n\n## KPI Targets:\n- Coverage: > 95%\n- Cost Reduction: > 70%\n- Response Time: < 100ms"
+          }
+        },
+        {
+          "title": "Data Points per Profile",
+          "layout": { "column": 1, "row": 4, "width": 6, "height": 3 },
+          "visualization": { "id": "viz.bar" },
+          "rawConfiguration": {
+            "nrqlQueries": [{
+              "accountId": 4430445,
+              "query": "SELECT count(*) FROM Metric WHERE nrdot.version = '2.0' FACET nrdot.profile SINCE 1 hour ago"
+            }]
+          }
+        },
+        {
+          "title": "Cost Reduction by Profile",
+          "layout": { "column": 7, "row": 4, "width": 6, "height": 3 },
+          "visualization": { "id": "viz.pie" },
+          "rawConfiguration": {
+            "nrqlQueries": [{
+              "accountId": 4430445,
+              "query": "SELECT sum(nrdot.cost.estimate) FROM Metric WHERE nrdot.version = '2.0' FACET nrdot.profile SINCE 1 hour ago"
+            }]
+          }
+        }
+      ]
+    }
+  ]
+}

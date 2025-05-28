@@ -1,0 +1,248 @@
+{
+  "name": "NRDOT v2 KPI Optimization Dashboard",
+  "description": "Real-time monitoring of NRDOT optimization profiles and KPIs",
+  "permissions": "PUBLIC_READ_WRITE",
+  "pages": [
+    {
+      "name": "Overview",
+      "description": "NRDOT KPI Overview",
+      "widgets": [
+        {
+          "title": "Current Profile Distribution",
+          "configuration": {
+            "billboard": {
+              "queries": [
+                {
+                  "accountId": 4430445,
+                  "query": "SELECT uniqueCount(profile) as 'Active Profiles' FROM NRDOTMetrics SINCE 30 minutes ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "title": "Average Coverage %",
+          "configuration": {
+            "billboard": {
+              "queries": [
+                {
+                  "accountId": 4430445,
+                  "query": "SELECT average(coverage) as 'Coverage %' FROM NRDOTMetrics SINCE 30 minutes ago"
+                }
+              ],
+              "thresholds": [
+                {
+                  "alertSeverity": "CRITICAL",
+                  "value": 90
+                },
+                {
+                  "alertSeverity": "WARNING",
+                  "value": 95
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 5,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "title": "Average Cost Reduction %",
+          "configuration": {
+            "billboard": {
+              "queries": [
+                {
+                  "accountId": 4430445,
+                  "query": "SELECT average(costReduction) as 'Cost Reduction %' FROM NRDOTMetrics SINCE 30 minutes ago"
+                }
+              ],
+              "thresholds": [
+                {
+                  "alertSeverity": "WARNING",
+                  "value": 50
+                },
+                {
+                  "alertSeverity": "CRITICAL",
+                  "value": 70
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 9,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "title": "Coverage by Profile",
+          "configuration": {
+            "line": {
+              "queries": [
+                {
+                  "accountId": 4430445,
+                  "query": "SELECT average(coverage) FROM NRDOTMetrics FACET profile TIMESERIES SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "title": "Cost Reduction by Profile",
+          "configuration": {
+            "line": {
+              "queries": [
+                {
+                  "accountId": 4430445,
+                  "query": "SELECT average(costReduction) FROM NRDOTMetrics FACET profile TIMESERIES SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 7,
+            "row": 4,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "title": "Data Points by Profile",
+          "configuration": {
+            "bar": {
+              "queries": [
+                {
+                  "accountId": 4430445,
+                  "query": "SELECT average(dataPoints) FROM NRDOTMetrics FACET profile SINCE 30 minutes ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 1,
+            "row": 7,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "title": "CPU Usage by Profile",
+          "configuration": {
+            "area": {
+              "queries": [
+                {
+                  "accountId": 4430445,
+                  "query": "SELECT average(cpuUsage) FROM NRDOTMetrics FACET profile TIMESERIES SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 5,
+            "row": 7,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "title": "Memory Usage by Profile",
+          "configuration": {
+            "area": {
+              "queries": [
+                {
+                  "accountId": 4430445,
+                  "query": "SELECT average(memoryUsage) FROM NRDOTMetrics FACET profile TIMESERIES SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 9,
+            "row": 7,
+            "width": 4,
+            "height": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "Experiments",
+      "description": "Experiment Results",
+      "widgets": [
+        {
+          "title": "Experiment Summary",
+          "configuration": {
+            "table": {
+              "queries": [
+                {
+                  "accountId": 4430445,
+                  "query": "SELECT average(coverage) as 'Avg Coverage %', average(costReduction) as 'Avg Cost Reduction %', average(cpuUsage) as 'Avg CPU %', average(dataPoints) as 'Avg Data Points' FROM NRDOTExperiment FACET profile SINCE 1 day ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 12,
+            "height": 3
+          }
+        },
+        {
+          "title": "Coverage vs Cost Reduction",
+          "configuration": {
+            "scatter": {
+              "queries": [
+                {
+                  "accountId": 4430445,
+                  "query": "SELECT average(coverage) as 'Coverage %', average(costReduction) as 'Cost Reduction %' FROM NRDOTMetrics FACET profile SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "title": "Profile Performance Matrix",
+          "configuration": {
+            "heatmap": {
+              "queries": [
+                {
+                  "accountId": 4430445,
+                  "query": "SELECT count(*) FROM NRDOTMetrics FACET profile, iteration SINCE 1 hour ago"
+                }
+              ]
+            }
+          },
+          "layout": {
+            "column": 7,
+            "row": 4,
+            "width": 6,
+            "height": 3
+          }
+        }
+      ]
+    }
+  ]
+}
