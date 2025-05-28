@@ -1,0 +1,350 @@
+/**
+ * Design System CSS
+ * Global styles and CSS variables based on our design tokens
+ */
+
+:root {
+  /* Spacing */
+  --space-unit: 8px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --space-xxxl: 64px;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  
+  --font-size-xs: 10px;
+  --font-size-sm: 11px;
+  --font-size-base: 14px;
+  --font-size-md: 19px;
+  --font-size-lg: 25px;
+  --font-size-xl: 33px;
+  --font-size-xxl: 44px;
+
+  /* Colors */
+  --color-critical: #D62728;
+  --color-error: #E45B5B;
+  --color-warning: #FF7F0E;
+  --color-success: #2CA02C;
+  --color-info: #1F77B4;
+  --color-neutral: #7F7F7F;
+  
+  --color-operational-healthy: #2CA02C;
+  --color-operational-degraded: #FF7F0E;
+  --color-operational-unhealthy: #D62728;
+  --color-operational-zombie: #8B0000;
+  --color-operational-unknown: #7F7F7F;
+
+  --color-ui-background: #FFFFFF;
+  --color-ui-background-alt: #F7F8F8;
+  --color-ui-surface: #FFFFFF;
+  --color-ui-surface-hover: #F4F5F5;
+  --color-ui-border: #E3E4E4;
+  --color-ui-border-hover: #D5D7D7;
+  --color-ui-text: #2A2B2B;
+  --color-ui-text-secondary: #5A5C5C;
+  --color-ui-text-tertiary: #8E9090;
+  --color-ui-text-inverse: #FFFFFF;
+  --color-ui-focus: #0078D4;
+  --color-ui-focus-ring: rgba(0, 120, 212, 0.3);
+
+  /* Timing */
+  --timing-instant: 0ms;
+  --timing-fast: 100ms;
+  --timing-normal: 200ms;
+  --timing-slow: 300ms;
+  --timing-crawl: 500ms;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-base: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+  /* Border radius */
+  --radius-sm: 2px;
+  --radius-base: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+}
+
+/* Global resets for consistent rendering */
+.dash-builder-component {
+  box-sizing: border-box;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  color: var(--color-ui-text);
+}
+
+.dash-builder-component *,
+.dash-builder-component *::before,
+.dash-builder-component *::after {
+  box-sizing: inherit;
+}
+
+/* Animation classes */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes zombie-pulse {
+  0%, 100% {
+    background-color: var(--color-operational-zombie);
+  }
+  50% {
+    background-color: #660000;
+  }
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Focus styles */
+.dash-builder-component :focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-ui-focus-ring);
+}
+
+/* Button styles */
+.dash-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-base);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  font-family: var(--font-sans);
+  line-height: 1.2;
+  cursor: pointer;
+  transition: all var(--timing-normal) cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid transparent;
+}
+
+.dash-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dash-button--primary {
+  background-color: var(--color-ui-focus);
+  color: var(--color-ui-text-inverse);
+}
+
+.dash-button--primary:hover:not(:disabled) {
+  background-color: #106EBE;
+}
+
+.dash-button--secondary {
+  background-color: var(--color-ui-surface);
+  color: var(--color-ui-text);
+  border-color: var(--color-ui-border);
+}
+
+.dash-button--secondary:hover:not(:disabled) {
+  background-color: var(--color-ui-surface-hover);
+  border-color: var(--color-ui-border-hover);
+}
+
+.dash-button--danger {
+  background-color: var(--color-error);
+  color: var(--color-ui-text-inverse);
+}
+
+.dash-button--danger:hover:not(:disabled) {
+  background-color: #CC4B4B;
+}
+
+/* Status indicators */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.status-dot {
+  width: var(--space-sm);
+  height: var(--space-sm);
+  border-radius: var(--radius-full);
+}
+
+.status-dot--critical {
+  background-color: var(--color-critical);
+  animation: pulse 2s infinite;
+}
+
+.status-dot--error {
+  background-color: var(--color-error);
+}
+
+.status-dot--warning {
+  background-color: var(--color-warning);
+}
+
+.status-dot--success {
+  background-color: var(--color-success);
+}
+
+.status-dot--info {
+  background-color: var(--color-info);
+}
+
+/* Loading states */
+.skeleton-loader {
+  background-color: var(--color-ui-background-alt);
+  border-radius: var(--radius-base);
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-loader::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: shimmer 2s infinite;
+}
+
+.spinner {
+  display: inline-block;
+  width: var(--space-md);
+  height: var(--space-md);
+  border: 2px solid var(--color-ui-border);
+  border-top-color: var(--color-ui-focus);
+  border-radius: var(--radius-full);
+  animation: spin 1s linear infinite;
+}
+
+/* Error states */
+.error-inline {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  background-color: #FEF2F2;
+  border: 1px solid #FEE2E2;
+  border-radius: var(--radius-base);
+}
+
+.error-message {
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
+}
+
+/* Zombie indicator */
+.zombie-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  background-color: var(--color-operational-zombie);
+  color: var(--color-ui-text-inverse);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  animation: zombie-pulse 3s infinite;
+}
+
+/* Performance bar */
+.performance-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.performance-bar__track {
+  width: var(--space-xxxl);
+  height: var(--space-xs);
+  background-color: var(--color-ui-border);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.performance-bar__fill {
+  height: 100%;
+  transition: width var(--timing-normal) ease-out;
+}
+
+.performance-bar__fill--good {
+  background-color: var(--color-success);
+}
+
+.performance-bar__fill--warning {
+  background-color: var(--color-warning);
+}
+
+.performance-bar__fill--critical {
+  background-color: var(--color-critical);
+}
+
+/* Utility classes */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Responsive utilities */
+@media (max-width: 640px) {
+  :root {
+    --font-size-base: 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Dark mode support (future) */
+@media (prefers-color-scheme: dark) {
+  /* Dark mode variables would go here */
+}

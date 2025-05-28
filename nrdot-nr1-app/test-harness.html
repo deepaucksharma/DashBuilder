@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NR1 App Test Harness</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #2a2b2b;
+            margin-bottom: 20px;
+        }
+        .test-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .test-section h2 {
+            color: #007e8b;
+            margin-top: 0;
+        }
+        iframe {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .test-links {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .test-link {
+            padding: 10px 20px;
+            background: #007e8b;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .test-link:hover {
+            background: #005a6b;
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .status.success {
+            background: #e7f4e7;
+            color: #1e7e1e;
+        }
+        .status.warning {
+            background: #fff4e6;
+            color: #b86e00;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>NR1 App Test Harness</h1>
+        
+        <div class="test-section">
+            <h2>Build Status</h2>
+            <p><span class="status success">✓ Build Successful</span></p>
+            <p>The NR1 app has been successfully built using webpack with the following components:</p>
+            <ul>
+                <li>Console Nerdlet with Visual Query Builder</li>
+                <li>Overview Nerdlet with KPI cards</li>
+                <li>Shared components integration (NRQL Validator, Visual Query Builder)</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2>Test Links</h2>
+            <div class="test-links">
+                <a href="dist/console/index.html" class="test-link" target="_blank">Console Nerdlet</a>
+                <a href="dist/overview/index.html" class="test-link" target="_blank">Overview Nerdlet</a>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>Console Nerdlet Preview</h2>
+            <iframe src="dist/console/index.html" title="Console Nerdlet"></iframe>
+        </div>
+
+        <div class="test-section">
+            <h2>Components Included</h2>
+            <h3>From Shared Components Library (@dashbuilder/shared-components@0.2.0):</h3>
+            <ul>
+                <li><strong>NRQLValidator</strong> - Validates NRQL queries for syntax and structure</li>
+                <li><strong>VisualQueryBuilder</strong> - Interactive UI for building NRQL queries</li>
+            </ul>
+            
+            <h3>NR1-specific Components:</h3>
+            <ul>
+                <li><strong>ProfileControl</strong> - Manages NRDOT optimization profiles</li>
+                <li><strong>LiveKPICards</strong> - Real-time KPI visualization</li>
+                <li><strong>VisualQueryBuilderModal</strong> - NR1 modal wrapper for query builder</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2>Known Limitations</h2>
+            <p><span class="status warning">⚠ Using Mock NR1 SDK</span></p>
+            <p>This build uses a mock implementation of the NR1 SDK components. In a real New Relic environment:</p>
+            <ul>
+                <li>NrqlQuery would fetch real data from New Relic</li>
+                <li>UI components would use official New Relic styling</li>
+                <li>Navigation and platform features would be fully functional</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2>Next Steps for Deployment</h2>
+            <ol>
+                <li>Obtain the official NR1 CLI tool from New Relic</li>
+                <li>Run <code>nr1 nerdpack:validate</code> to validate the app structure</li>
+                <li>Use <code>nr1 nerdpack:serve</code> to test in the New Relic platform</li>
+                <li>Deploy with <code>nr1 nerdpack:publish</code> and <code>nr1 nerdpack:subscribe</code></li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html>

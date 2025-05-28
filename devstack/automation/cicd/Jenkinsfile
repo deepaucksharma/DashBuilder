@@ -1,0 +1,274 @@
+// Jenkins Pipeline for OpenStack Deployment
+// This pipeline automates the deployment of applications to OpenStack
+
+pipeline {
+    agent any
+    
+    environment {
+        OS_AUTH_URL = credentials('openstack-auth-url')
+        OS_PROJECT_NAME = credentials('openstack-project')
+        OS_USERNAME = credentials('openstack-username')
+        OS_PASSWORD = credentials('openstack-password')
+        OS_USER_DOMAIN_NAME = 'default'
+        OS_PROJECT_DOMAIN_NAME = 'default'
+    }
+    
+    parameters {
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['staging', 'production'],
+            description: 'Target environment'
+        )
+        string(
+            name: 'INSTANCE_COUNT',
+            defaultValue: '3',
+            description: 'Number of instances to deploy'
+        )
+        booleanParam(
+            name: 'RUN_TESTS',
+            defaultValue: true,
+            description: 'Run integration tests after deployment'
+        )
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Validate') {
+            parallel {
+                stage('Terraform') {
+                    steps {
+                        dir('automation/terraform') {
+                            sh '''
+                                terraform init
+                                terraform validate
+                                terraform fmt -check
+                            '''
+                        }
+                    }
+                }
+                
+                stage('Ansible') {
+                    steps {
+                        dir('automation/ansible') {
+                            sh '''
+                                ansible-playbook --syntax-check deploy-vms.yml
+                                ansible-lint deploy-vms.yml || true
+                            '''
+                        }
+                    }
+                }
+                
+                stage('Python') {
+                    steps {
+                        dir('automation/python') {
+                            sh '''
+                                python3 -m py_compile *.py
+                                python3 -m pylint *.py || true
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                script {
+                    docker.build("${env.JOB_NAME}:${env.BUILD_NUMBER}")
+                    docker.build("${env.JOB_NAME}:latest")
+                }
+            }
+        }
+        
+        stage('Security Scan') {
+            steps {
+                script {
+                    // Run security scanning
+                    sh '''
+                        # Container scanning
+                        trivy image ${JOB_NAME}:${BUILD_NUMBER}
+                        
+                        # Code scanning
+                        cd automation/python
+                        bandit -r . -f json -o ${WORKSPACE}/bandit-report.json
+                    '''
+                }
+            }
+            post {
+                always {
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: '.',
+                        reportFiles: 'bandit-report.json',
+                        reportName: 'Security Report'
+                    ])
+                }
+            }
+        }
+        
+        stage('Deploy Infrastructure') {
+            steps {
+                script {
+                    if (params.ENVIRONMENT == 'staging') {
+                        // Deploy using Terraform for staging
+                        dir('automation/terraform') {
+                            sh """
+                                terraform init
+                                terraform workspace select ${params.ENVIRONMENT} || terraform workspace new ${params.ENVIRONMENT}
+                                terraform plan -var="instance_count=${params.INSTANCE_COUNT}" -out=tfplan
+                                terraform apply -auto-approve tfplan
+                            """
+                        }
+                    } else if (params.ENVIRONMENT == 'production') {
+                        // Deploy using Heat for production
+                        dir('automation/heat') {
+                            sh """
+                                openstack stack create \\
+                                    --template web-app-stack.yaml \\
+                                    --parameter desired_capacity=${params.INSTANCE_COUNT} \\
+                                    --wait \\
+                                    ${env.JOB_NAME}-${params.ENVIRONMENT}
+                            """
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Configure Instances') {
+            when {
+                expression { params.ENVIRONMENT == 'staging' }
+            }
+            steps {
+                dir('automation/ansible') {
+                    sh '''
+                        ansible-playbook -i inventory.ini configure-vms.yml
+                    '''
+                }
+            }
+        }
+        
+        stage('Integration Tests') {
+            when {
+                expression { params.RUN_TESTS == true }
+            }
+            steps {
+                script {
+                    // Get load balancer IP
+                    def lbIp = sh(
+                        script: "cd automation/terraform && terraform output -raw lb_ip",
+                        returnStdout: true
+                    ).trim()
+                    
+                    // Run tests
+                    sh """
+                        python3 -m pytest \\
+                            --url=http://${lbIp} \\
+                            --junitxml=test-results.xml \\
+                            automation/tests/
+                    """
+                }
+            }
+            post {
+                always {
+                    junit 'test-results.xml'
+                }
+            }
+        }
+        
+        stage('Performance Test') {
+            when {
+                expression { params.ENVIRONMENT == 'staging' && params.RUN_TESTS == true }
+            }
+            steps {
+                script {
+                    def lbIp = sh(
+                        script: "cd automation/terraform && terraform output -raw lb_ip",
+                        returnStdout: true
+                    ).trim()
+                    
+                    sh """
+                        # Run load test
+                        k6 run \\
+                            -e LB_IP=${lbIp} \\
+                            --out json=k6-results.json \\
+                            automation/tests/load-test.js
+                    """
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'k6-results.json'
+                }
+            }
+        }
+        
+        stage('Promote to Production') {
+            when {
+                expression { params.ENVIRONMENT == 'staging' }
+            }
+            steps {
+                script {
+                    def userInput = input(
+                        message: 'Promote to Production?',
+                        parameters: [
+                            booleanParam(
+                                name: 'PROCEED',
+                                defaultValue: false,
+                                description: 'Deploy to production'
+                            )
+                        ]
+                    )
+                    
+                    if (userInput) {
+                        build job: env.JOB_NAME,
+                            parameters: [
+                                string(name: 'ENVIRONMENT', value: 'production'),
+                                string(name: 'INSTANCE_COUNT', value: params.INSTANCE_COUNT),
+                                booleanParam(name: 'RUN_TESTS', value: false)
+                            ]
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Cleanup workspace
+            cleanWs()
+        }
+        
+        success {
+            slackSend(
+                color: 'good',
+                message: "Deployment to ${params.ENVIRONMENT} succeeded: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+            )
+        }
+        
+        failure {
+            slackSend(
+                color: 'danger',
+                message: "Deployment to ${params.ENVIRONMENT} failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+            )
+            
+            // Rollback on failure
+            script {
+                if (params.ENVIRONMENT == 'production') {
+                    sh """
+                        # Implement rollback logic
+                        echo "Rolling back deployment..."
+                        # openstack stack update --rollback ${env.JOB_NAME}-${params.ENVIRONMENT}
+                    """
+                }
+            }
+        }
+    }
+}

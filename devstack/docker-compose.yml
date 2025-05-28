@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  devstack:
+    image: ubuntu:22.04
+    container_name: devstack
+    hostname: devstack
+    privileged: true
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./devstack:/opt/devstack
+      - /lib/modules:/lib/modules:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    environment:
+      - ADMIN_PASSWORD=secret
+      - DATABASE_PASSWORD=secret
+      - RABBIT_PASSWORD=secret
+      - SERVICE_PASSWORD=secret
+    networks:
+      devstack-net:
+        ipv4_address: 172.20.0.10
+    command: /bin/bash -c "apt-get update && apt-get install -y sudo git && cd /opt/devstack && ./stack.sh"
+    
+networks:
+  devstack-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1

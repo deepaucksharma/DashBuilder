@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ../../
+      dockerfile: frontend/deployment/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - API_ENDPOINT=${API_ENDPOINT:-http://backend:8080}
+      - WS_ENDPOINT=${WS_ENDPOINT:-ws://backend:8080}
+    depends_on:
+      - backend
+    networks:
+      - dashbuilder-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  backend:
+    image: dashbuilder-backend:latest
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - NEW_RELIC_API_KEY=${NEW_RELIC_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+    networks:
+      - dashbuilder-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  redis:
+    image: redis:6-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - dashbuilder-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:13-alpine
+    environment:
+      - POSTGRES_DB=dashbuilder
+      - POSTGRES_USER=${DB_USER:-dashbuilder}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - dashbuilder-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dashbuilder"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  dashbuilder-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:

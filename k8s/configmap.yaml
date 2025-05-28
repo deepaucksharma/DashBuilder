@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashbuilder-config
+  namespace: dashbuilder
+data:
+  nerdgraph.endpoint: "https://api.newrelic.com/graphql"
+  websocket.endpoint: "wss://dashbuilder.example.com/ws"
+  redis.url: "redis://redis-service:6379"
+  cache.ttl: "3600"
+  rate.limit.requests: "100"
+  rate.limit.window: "60"
+  batch.size: "50"
+  batch.delay: "100"
+  analytics.enabled: "true"
+  ml.enabled: "true"
+  offline.enabled: "true"
+  security.csp: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.nr-assets.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.newrelic.com wss://dashbuilder.example.com"

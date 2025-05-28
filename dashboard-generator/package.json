@@ -1,0 +1,49 @@
+{
+  "name": "@dashbuilder/dashboard-generator",
+  "version": "1.0.0",
+  "description": "Intelligent dashboard generation platform for New Relic",
+  "main": "index.js",
+  "bin": {
+    "dashgen": "./cli/dashgen.js"
+  },
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "example:system-health": "node index.js",
+    "example:deploy": "node index.js --deploy",
+    "generate": "node cli/generate.js",
+    "preview": "node cli/preview.js",
+    "api:start": "node api/server.js",
+    "api:dev": "nodemon api/server.js",
+    "api:test": "curl http://localhost:3001/health"
+  },
+  "keywords": [
+    "newrelic",
+    "dashboard",
+    "generator",
+    "observability",
+    "monitoring",
+    "automation",
+    "nrql"
+  ],
+  "author": "DashBuilder Team",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.0.3"
+  },
+  "devDependencies": {
+    "jest": "^29.5.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dashbuilder/dashboard-generator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dashbuilder/dashboard-generator/issues"
+  },
+  "homepage": "https://github.com/dashbuilder/dashboard-generator#readme"
+}

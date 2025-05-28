@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Adaptive Widgets Demo - DashBuilder</title>
+  <link rel="stylesheet" href="../styles/adaptive-widgets.css">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+
+    .demo-header {
+      max-width: 1200px;
+      margin: 0 auto 40px;
+    }
+
+    .demo-header h1 {
+      margin: 0 0 10px;
+      color: #333;
+    }
+
+    .demo-header p {
+      color: #666;
+      margin: 0;
+    }
+
+    .demo-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .widget-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+
+    .widget-container {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .widget-container h3 {
+      margin: 0 0 15px;
+      color: #333;
+      font-size: 16px;
+    }
+
+    .widget-holder {
+      height: 300px;
+    }
+
+    .controls {
+      margin-top: 40px;
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .controls h3 {
+      margin: 0 0 15px;
+      color: #333;
+    }
+
+    .control-group {
+      margin-bottom: 15px;
+    }
+
+    .control-group label {
+      display: inline-block;
+      width: 150px;
+      color: #666;
+    }
+
+    .control-group select,
+    .control-group input {
+      padding: 5px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .control-group button {
+      padding: 5px 15px;
+      background: #0366d6;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .control-group button:hover {
+      background: #0256c7;
+    }
+
+    .data-generator {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 4px;
+    }
+
+    .data-generator h4 {
+      margin: 0 0 10px;
+      color: #333;
+      font-size: 14px;
+    }
+
+    .data-generator button {
+      margin-right: 10px;
+      padding: 5px 12px;
+      background: #28a745;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .data-generator button:hover {
+      background: #218838;
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-header">
+    <h1>Adaptive Widgets Demo</h1>
+    <p>Intelligent, context-aware dashboard widgets that adapt to your data and device</p>
+  </div>
+
+  <div class="demo-container">
+    <div class="widget-grid">
+      <div class="widget-container">
+        <h3>Time Series Chart</h3>
+        <div id="widget1" class="widget-holder"></div>
+      </div>
+
+      <div class="widget-container">
+        <h3>Category Comparison</h3>
+        <div id="widget2" class="widget-holder"></div>
+      </div>
+
+      <div class="widget-container">
+        <h3>Distribution Analysis</h3>
+        <div id="widget3" class="widget-holder"></div>
+      </div>
+
+      <div class="widget-container">
+        <h3>Correlation Plot</h3>
+        <div id="widget4" class="widget-holder"></div>
+      </div>
+
+      <div class="widget-container">
+        <h3>Performance Gauge</h3>
+        <div id="widget5" class="widget-holder"></div>
+      </div>
+
+      <div class="widget-container">
+        <h3>Data Table</h3>
+        <div id="widget6" class="widget-holder"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <h3>Widget Controls</h3>
+      
+      <div class="control-group">
+        <label>Rendering Strategy:</label>
+        <select id="renderStrategy">
+          <option value="auto">Auto-detect</option>
+          <option value="canvas">Canvas</option>
+          <option value="svg">SVG</option>
+          <option value="webgl">WebGL</option>
+          <option value="html">HTML</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label>Quality:</label>
+        <select id="quality">
+          <option value="balanced">Balanced</option>
+          <option value="performance">Performance</option>
+          <option value="quality">Quality</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label>Animations:</label>
+        <input type="checkbox" id="animations" checked>
+      </div>
+
+      <div class="control-group">
+        <label>Show Values:</label>
+        <input type="checkbox" id="showValues">
+      </div>
+
+      <div class="control-group">
+        <button onclick="updateWidgets()">Update All Widgets</button>
+        <button onclick="clearCache()">Clear Cache</button>
+      </div>
+
+      <div class="data-generator">
+        <h4>Data Generator</h4>
+        <button onclick="generateTimeSeriesData()">Time Series</button>
+        <button onclick="generateCategoryData()">Categories</button>
+        <button onclick="generateScatterData()">Scatter</button>
+        <button onclick="generateTableData()">Table</button>
+        <button onclick="simulateRealTimeData()">Start Real-time</button>
+        <button onclick="stopRealTimeData()">Stop Real-time</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../adaptive-widgets.js"></script>
+  <script src="../chart-renderers.js"></script>
+  <script>
+    // Widget instances
+    const widgets = {};
+    let realTimeInterval = null;
+
+    // Initialize widgets
+    function initializeWidgets() {
+      // Time series widget
+      widgets.widget1 = new AdaptiveWidget({
+        chartType: 'line',
+        title: 'Server Response Time'
+      });
+      widgets.widget1.mount(document.getElementById('widget1'));
+
+      // Bar chart widget
+      widgets.widget2 = new AdaptiveWidget({
+        chartType: 'bar',
+        title: 'Requests by Category'
+      });
+      widgets.widget2.mount(document.getElementById('widget2'));
+
+      // Pie chart widget
+      widgets.widget3 = new AdaptiveWidget({
+        chartType: 'pie',
+        title: 'Traffic Distribution'
+      });
+      widgets.widget3.mount(document.getElementById('widget3'));
+
+      // Scatter plot widget
+      widgets.widget4 = new AdaptiveWidget({
+        chartType: 'scatter',
+        title: 'Response vs Load'
+      });
+      widgets.widget4.mount(document.getElementById('widget4'));
+
+      // Gauge widget
+      widgets.widget5 = new AdaptiveWidget({
+        chartType: 'gauge',
+        title: 'CPU Usage'
+      });
+      widgets.widget5.mount(document.getElementById('widget5'));
+
+      // Table widget
+      widgets.widget6 = new AdaptiveWidget({
+        chartType: 'table',
+        title: 'Top Endpoints'
+      });
+      widgets.widget6.mount(document.getElementById('widget6'));
+
+      // Load initial data
+      loadInitialData();
+    }
+
+    // Load initial data
+    function loadInitialData() {
+      // Time series data
+      const timeSeriesData = generateTimeSeriesData();
+      widgets.widget1.render(timeSeriesData, document.getElementById('widget1'));
+
+      // Category data
+      const categoryData = generateCategoryData();
+      widgets.widget2.render(categoryData, document.getElementById('widget2'));
+
+      // Pie data
+      const pieData = [
+        { category: 'Desktop', value: 45 },
+        { category: 'Mobile', value: 35 },
+        { category: 'Tablet', value: 20 }
+      ];
+      widgets.widget3.render(pieData, document.getElementById('widget3'));
+
+      // Scatter data
+      const scatterData = generateScatterData();
+      widgets.widget4.render(scatterData, document.getElementById('widget4'));
+
+      // Gauge data
+      const gaugeData = [{ value: 75, label: 'CPU %' }];
+      widgets.widget5.render(gaugeData, document.getElementById('widget5'));
+
+      // Table data
+      const tableData = generateTableData();
+      widgets.widget6.render(tableData, document.getElementById('widget6'));
+    }
+
+    // Data generators
+    function generateTimeSeriesData() {
+      const data = [];
+      const now = Date.now();
+      for (let i = 0; i < 50; i++) {
+        data.push({
+          timestamp: now - (50 - i) * 60000,
+          value: 100 + Math.random() * 50 + Math.sin(i / 5) * 20,
+          label: new Date(now - (50 - i) * 60000).toLocaleTimeString()
+        });
+      }
+      return data;
+    }
+
+    function generateCategoryData() {
+      return [
+        { category: 'API', value: 450 },
+        { category: 'Static', value: 320 },
+        { category: 'Database', value: 280 },
+        { category: 'Cache', value: 190 },
+        { category: 'Other', value: 85 }
+      ];
+    }
+
+    function generateScatterData() {
+      const data = [];
+      for (let i = 0; i < 100; i++) {
+        data.push({
+          x: Math.random() * 100,
+          y: Math.random() * 100 + Math.random() * 50,
+          size: 3 + Math.random() * 5
+        });
+      }
+      return data;
+    }
+
+    function generateTableData() {
+      return [
+        { endpoint: '/api/users', requests: 4523, avgTime: '45ms', errors: 12 },
+        { endpoint: '/api/products', requests: 3421, avgTime: '67ms', errors: 8 },
+        { endpoint: '/api/orders', requests: 2156, avgTime: '123ms', errors: 23 },
+        { endpoint: '/api/auth', requests: 1892, avgTime: '34ms', errors: 5 },
+        { endpoint: '/api/search', requests: 1567, avgTime: '89ms', errors: 15 }
+      ];
+    }
+
+    // Real-time simulation
+    function simulateRealTimeData() {
+      if (realTimeInterval) return;
+
+      realTimeInterval = setInterval(() => {
+        // Update time series
+        const currentData = widgets.widget1.state.data || [];
+        const newPoint = {
+          timestamp: Date.now(),
+          value: 100 + Math.random() * 50 + Math.sin(Date.now() / 5000) * 20,
+          label: new Date().toLocaleTimeString()
+        };
+        
+        const updatedData = [...currentData.slice(-49), newPoint];
+        widgets.widget1.render(updatedData, document.getElementById('widget1'));
+
+        // Update gauge
+        const gaugeValue = 50 + Math.random() * 40 + Math.sin(Date.now() / 3000) * 10;
+        widgets.widget5.render([{ value: gaugeValue, label: 'CPU %' }], document.getElementById('widget5'));
+      }, 1000);
+    }
+
+    function stopRealTimeData() {
+      if (realTimeInterval) {
+        clearInterval(realTimeInterval);
+        realTimeInterval = null;
+      }
+    }
+
+    // Control handlers
+    function updateWidgets() {
+      const strategy = document.getElementById('renderStrategy').value;
+      const quality = document.getElementById('quality').value;
+      const animations = document.getElementById('animations').checked;
+      const showValues = document.getElementById('showValues').checked;
+
+      // Update preferences
+      Object.values(widgets).forEach(widget => {
+        widget.savePreferences({
+          quality,
+          animations,
+          showValues,
+          renderStrategy: strategy === 'auto' ? null : strategy
+        });
+      });
+
+      // Re-render all widgets
+      loadInitialData();
+    }
+
+    function clearCache() {
+      Object.values(widgets).forEach(widget => {
+        widget.clearCache();
+      });
+      console.log('Widget cache cleared');
+    }
+
+    // Initialize on load
+    window.addEventListener('load', initializeWidgets);
+
+    // Cleanup on unload
+    window.addEventListener('beforeunload', () => {
+      stopRealTimeData();
+      Object.values(widgets).forEach(widget => {
+        widget.unmount();
+      });
+    });
+  </script>
+</body>
+</html>

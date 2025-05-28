@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashbuilder-frontend
+  namespace: dashbuilder
+  labels:
+    app: dashbuilder
+    component: frontend
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: dashbuilder
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: dashbuilder
+        component: frontend
+        version: v1
+    spec:
+      containers:
+      - name: frontend
+        image: ghcr.io/deepaksharma/dashbuilder/frontend:latest
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: NERDGRAPH_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: dashbuilder-config
+              key: nerdgraph.endpoint
+        - name: WEBSOCKET_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: dashbuilder-config
+              key: websocket.endpoint
+        - name: NEW_RELIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dashbuilder-secrets
+              key: new-relic-api-key
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: cache
+          mountPath: /app/cache
+      volumes:
+      - name: cache
+        emptyDir:
+          sizeLimit: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashbuilder-backend
+  namespace: dashbuilder
+  labels:
+    app: dashbuilder
+    component: backend
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dashbuilder
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: dashbuilder
+        component: backend
+        version: v1
+    spec:
+      containers:
+      - name: backend
+        image: ghcr.io/deepaksharma/dashbuilder/backend:latest
+        ports:
+        - containerPort: 3000
+          name: http
+        - containerPort: 8080
+          name: websocket
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: NEW_RELIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dashbuilder-secrets
+              key: new-relic-api-key
+        - name: NEW_RELIC_LICENSE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dashbuilder-secrets
+              key: new-relic-license-key
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: dashbuilder-config
+              key: redis.url
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5

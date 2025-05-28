@@ -86,3 +86,25 @@ nrdot-nr1-app/tmp/
 credentials.json
 api-keys.json
 dashbuilder-keys.json
+
+# Documentation patterns to prevent duplicates
+*-final.md
+*-fixed.md
+*-proper.md
+*-corrected.md
+*-v[0-9].md
+*-v[0-9][0-9].md
+docs/*-PLATFORM-*.md
+docs/*-ARCHITECTURE.md
+docs/FINAL-*.md
+
+# Prevent duplicate scripts
+scripts/*-final.js
+scripts/*-fixed.js
+scripts/*-test-*.js
+scripts/*-old.js
+
+# Prevent duplicate configs
+configs/*-test.yaml
+configs/*-old.yaml
+configs/*-backup.yaml

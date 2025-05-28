@@ -1,35 +1,43 @@
 # DashBuilder Documentation
 
-## Quick Links
+Welcome to the DashBuilder documentation. This guide covers everything you need to know about deploying, configuring, and using DashBuilder with NRDOT v2 optimization.
 
-- [Getting Started](../README.md) - Installation and setup
-- [Quick Start Guide](../QUICKSTART.md) - 5-minute setup
-- [Project Status](../PROJECT-STATUS.md) - Current state and roadmap
+## 📚 Documentation Structure
 
-## Core Documentation
+### Core Documentation
 
-### Architecture & Configuration
-- [Overview](01-overview.md) - System architecture and NRDOT v2 concepts
-- [Configuration](02-configuration.md) - Configuration options and profiles
-- [API Reference](api-reference.md) - CLI and API documentation
-
-### Operations
-- [Control Loop](03-control-loop.md) - Automatic optimization engine
-- [Monitoring](05-monitoring.md) - Dashboards, metrics, and alerts
-- [Deployment](06-deployment.md) - Production deployment guide
-- [Validation](07-validation.md) - Testing and validation procedures
+- **[Architecture](./architecture.md)** - System design and component overview
+- **[API Reference](./api-reference.md)** - Complete API documentation
+- **[Troubleshooting Runbook](./TROUBLESHOOTING_RUNBOOK.md)** - Common issues and solutions
 
 ### Guides
-- [Production Setup](production-setup.md) - Production best practices
-- [Migration Guide](migration-from-v1.md) - Upgrading from NRDOT v1
-- [Troubleshooting](TROUBLESHOOTING_RUNBOOK.md) - Common issues and solutions
-- [Docker Monitoring](DOCKER-MONITORING-GUIDE.md) - Container monitoring setup
-- [Experiment Tracking](EXPERIMENT_TRACKING_GUIDE.md) - Running optimization experiments
+
+- **[Experiment Tracking Guide](./EXPERIMENT_TRACKING_GUIDE.md)** - How to run and analyze experiments
+- **[Docker Monitoring Guide](./DOCKER-MONITORING-GUIDE.md)** - Container metrics collection
+- **[Production Setup](./production-setup.md)** - Production deployment guide
+- **[Migration from v1](./migration-from-v1.md)** - Upgrading from NRDOT v1
 
 ### Advanced Topics
-- [Cross-Platform Support](04-cross-platform.md) - Multi-OS deployment
-- [Advanced Scenarios](ADVANCED_SCENARIOS.md) - Complex configurations
-- [Production Update Plan](nrdot-v2-production-update-plan.md) - Rolling updates
+
+- **[Advanced Scenarios](./ADVANCED_SCENARIOS.md)** - Complex use cases and configurations
+- **[NRDOT v2 Production Update Plan](./nrdot-v2-production-update-plan.md)** - Rollout strategy
+
+## 🚀 Quick Navigation
+
+### Getting Started
+1. Read the [Architecture](./architecture.md) overview
+2. Follow the [Quick Start Guide](../QUICKSTART.md)
+3. Run your first [experiment](./EXPERIMENT_TRACKING_GUIDE.md)
+
+### For DevOps Engineers
+- [Production Setup](./production-setup.md)
+- [Docker Monitoring](./DOCKER-MONITORING-GUIDE.md)
+- [Troubleshooting](./TROUBLESHOOTING_RUNBOOK.md)
+
+### For Developers
+- [API Reference](./api-reference.md)
+- [Architecture](./architecture.md)
+- [Dashboard Generator](../dashboard-generator/README.md)
 
 ## Quick Reference
 
@@ -68,5 +76,82 @@ npm run experiment:quick
 | `nrdot.coverage.percentage` | Process coverage % | Gauge |
 | `nrdot.profile` | Current optimization profile | Attribute |
 
-## Archive
-Historical documentation and analyses are available in the [archive](archive/) directory.
+## 📂 Additional Resources
+
+### Implementation Details
+- **Dashboard Generator**: `/dashboard-generator/README.md`
+- **CLI Documentation**: `/scripts/README.md`
+- **Experiment Framework**: `/experiments/README.md`
+- **NR1 App**: `/nrdot-nr1-app/README.md`
+
+### DevStack Resources
+- **NRDOT Deployment**: `/devstack/NRDOT-README.md`
+- **Setup Guide**: `/devstack/SETUP_GUIDE.md`
+- **Commands Cheatsheet**: `/devstack/COMMANDS_CHEATSHEET.md`
+
+## 🔍 Finding Information
+
+### By Topic
+
+**NRDOT Optimization**
+- Process filtering and optimization profiles
+- Control loop configuration
+- Cost reduction strategies
+
+**Dashboard Management**
+- Creating dashboards programmatically
+- Template management
+- Schema validation
+
+**Experiments**
+- Running comparison tests
+- Analyzing results
+- Optimizing profiles
+
+**Deployment**
+- Docker Compose setup
+- Kubernetes deployment
+- Environment configuration
+
+### By Role
+
+**System Administrator**
+- Focus on production setup and monitoring guides
+- Review troubleshooting runbook
+- Check deployment configurations
+
+**Developer**
+- Start with architecture documentation
+- Review API reference
+- Explore CLI tools
+
+**Data Analyst**
+- Learn about experiment framework
+- Understand metrics and dashboards
+- Review optimization profiles
+
+## 📝 Documentation Standards
+
+All documentation follows these principles:
+1. **Current State**: Documents reflect actual implementation
+2. **Single Source**: Each concept documented once
+3. **Clear Structure**: Logical organization and navigation
+4. **Practical Examples**: Real-world usage examples
+5. **Version Controlled**: Changes tracked in git
+
+## 🆘 Need Help?
+
+1. Check the [Troubleshooting Runbook](./TROUBLESHOOTING_RUNBOOK.md)
+2. Review [Advanced Scenarios](./ADVANCED_SCENARIOS.md)
+3. Search the codebase for examples
+4. Open an issue on GitHub
+
+## 📦 Archive
+
+Historical documentation and deprecated approaches are preserved in:
+- `/docs/archive/` - Old documentation versions
+- `/docs/archive/architecture-explorations/` - Previous architectural designs
+
+---
+
+Last updated: November 2024

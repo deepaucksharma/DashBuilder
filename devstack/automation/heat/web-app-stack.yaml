@@ -1,0 +1,223 @@
+heat_template_version: 2018-08-31
+
+description: >
+  Heat template to deploy a scalable web application
+  with load balancer, auto-scaling, and monitoring
+
+parameters:
+  key_name:
+    type: string
+    description: Name of keypair to assign to servers
+    default: heat-keypair
+    
+  image:
+    type: string
+    description: Name of image to use for servers
+    default: cirros-0.5.2-x86_64-disk
+    
+  flavor:
+    type: string
+    description: Flavor to use for servers
+    default: m1.small
+    
+  public_net:
+    type: string
+    description: Name of public network
+    default: public
+    
+  min_size:
+    type: number
+    description: Minimum number of instances
+    default: 2
+    
+  max_size:
+    type: number
+    description: Maximum number of instances
+    default: 5
+    
+  desired_capacity:
+    type: number
+    description: Desired number of instances
+    default: 3
+
+resources:
+  # Network Resources
+  app_net:
+    type: OS::Neutron::Net
+    properties:
+      name: heat-app-network
+
+  app_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: app_net }
+      cidr: 10.10.10.0/24
+      dns_nameservers: [8.8.8.8, 8.8.4.4]
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info:
+        network: { get_param: public_net }
+
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: router }
+      subnet_id: { get_resource: app_subnet }
+
+  # Security Group
+  web_security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: heat-web-security-group
+      rules:
+        - direction: ingress
+          ethertype: IPv4
+          port_range_min: 22
+          port_range_max: 22
+          protocol: tcp
+          remote_ip_prefix: 0.0.0.0/0
+        - direction: ingress
+          ethertype: IPv4
+          port_range_min: 80
+          port_range_max: 80
+          protocol: tcp
+          remote_ip_prefix: 0.0.0.0/0
+        - direction: ingress
+          ethertype: IPv4
+          protocol: icmp
+          remote_ip_prefix: 0.0.0.0/0
+
+  # Load Balancer
+  lb:
+    type: OS::Octavia::LoadBalancer
+    properties:
+      vip_subnet: { get_resource: app_subnet }
+      name: heat-web-lb
+
+  listener:
+    type: OS::Octavia::Listener
+    properties:
+      loadbalancer: { get_resource: lb }
+      protocol: HTTP
+      protocol_port: 80
+
+  pool:
+    type: OS::Octavia::Pool
+    properties:
+      listener: { get_resource: listener }
+      lb_algorithm: ROUND_ROBIN
+      protocol: HTTP
+
+  health_monitor:
+    type: OS::Octavia::HealthMonitor
+    properties:
+      pool: { get_resource: pool }
+      type: HTTP
+      delay: 5
+      max_retries: 3
+      timeout: 5
+
+  # Auto Scaling Group
+  asg:
+    type: OS::Heat::AutoScalingGroup
+    properties:
+      min_size: { get_param: min_size }
+      max_size: { get_param: max_size }
+      desired_capacity: { get_param: desired_capacity }
+      resource:
+        type: web_server.yaml
+        properties:
+          key_name: { get_param: key_name }
+          image: { get_param: image }
+          flavor: { get_param: flavor }
+          network: { get_resource: app_net }
+          subnet: { get_resource: app_subnet }
+          security_group: { get_resource: web_security_group }
+          pool_id: { get_resource: pool }
+          metadata: {"metering.server_group": {get_param: "OS::stack_id"}}
+
+  # Scaling Policies
+  scale_up_policy:
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: { get_resource: asg }
+      cooldown: 60
+      scaling_adjustment: 1
+
+  scale_down_policy:
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: { get_resource: asg }
+      cooldown: 60
+      scaling_adjustment: -1
+
+  # Alarms for Auto Scaling
+  cpu_alarm_high:
+    type: OS::Aodh::GnocchiAggregationByResourcesAlarm
+    properties:
+      description: Scale up if CPU > 80%
+      metric: cpu_util
+      aggregation_method: mean
+      granularity: 300
+      evaluation_periods: 1
+      threshold: 80
+      resource_type: instance
+      comparison_operator: gt
+      alarm_actions:
+        - str_replace:
+            template: trust+url
+            params:
+              url: {get_attr: [scale_up_policy, signal_url]}
+      query:
+        list_join:
+          - ''
+          - - '{"and":[{"=":{"server_group":"'
+            - {get_param: "OS::stack_id"}
+            - '"}},{"=":{"ended_at":null}}]}'
+
+  cpu_alarm_low:
+    type: OS::Aodh::GnocchiAggregationByResourcesAlarm
+    properties:
+      description: Scale down if CPU < 20%
+      metric: cpu_util
+      aggregation_method: mean
+      granularity: 300
+      evaluation_periods: 1
+      threshold: 20
+      resource_type: instance
+      comparison_operator: lt
+      alarm_actions:
+        - str_replace:
+            template: trust+url
+            params:
+              url: {get_attr: [scale_down_policy, signal_url]}
+      query:
+        list_join:
+          - ''
+          - - '{"and":[{"=":{"server_group":"'
+            - {get_param: "OS::stack_id"}
+            - '"}},{"=":{"ended_at":null}}]}'
+
+  # Floating IP for Load Balancer
+  lb_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_net }
+      port_id: { get_attr: [lb, vip_port_id] }
+
+outputs:
+  lb_ip:
+    description: Load Balancer IP
+    value: { get_attr: [lb_floating_ip, floating_ip_address] }
+  
+  scale_up_url:
+    description: URL to trigger scale up
+    value: { get_attr: [scale_up_policy, alarm_url] }
+    
+  scale_down_url:
+    description: URL to trigger scale down
+    value: { get_attr: [scale_down_policy, alarm_url] }

@@ -1,0 +1,188 @@
+---
+- name: Deploy NRDOT Collector to VMs
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars:
+    nrdot_version: "1.1.0"
+    new_relic_license_key: "{{ lookup('env', 'NEW_RELIC_LICENSE_KEY') }}"
+    environment: "{{ lookup('env', 'ENVIRONMENT') | default('production') }}"
+
+  tasks:
+    - name: Ensure required packages are installed
+      package:
+        name:
+          - wget
+          - ca-certificates
+        state: present
+
+    - name: Detect system architecture
+      set_fact:
+        nrdot_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+
+    - name: Download NRDOT collector package (Debian/Ubuntu)
+      get_url:
+        url: "https://github.com/newrelic/nrdot-collector-releases/releases/download/v{{ nrdot_version }}/nrdot-collector-host_{{ nrdot_version }}_linux_{{ nrdot_arch }}.deb"
+        dest: "/tmp/nrdot-collector-host.deb"
+        mode: '0644'
+      when: ansible_os_family == "Debian"
+
+    - name: Install NRDOT collector (Debian/Ubuntu)
+      apt:
+        deb: "/tmp/nrdot-collector-host.deb"
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Download NRDOT collector package (RHEL/CentOS)
+      get_url:
+        url: "https://github.com/newrelic/nrdot-collector-releases/releases/download/v{{ nrdot_version }}/nrdot-collector-host_{{ nrdot_version }}_linux_{{ 'x86_64' if nrdot_arch == 'amd64' else nrdot_arch }}.rpm"
+        dest: "/tmp/nrdot-collector-host.rpm"
+        mode: '0644'
+      when: ansible_os_family == "RedHat"
+
+    - name: Install NRDOT collector (RHEL/CentOS)
+      yum:
+        name: "/tmp/nrdot-collector-host.rpm"
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Create NRDOT configuration directory
+      file:
+        path: /etc/nrdot-collector-host
+        state: directory
+        mode: '0755'
+
+    - name: Create NRDOT environment file
+      copy:
+        content: |
+          # New Relic configuration
+          NEW_RELIC_LICENSE_KEY={{ new_relic_license_key }}
+          OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.nr-data.net
+          
+          # Resource attributes
+          OTEL_RESOURCE_ATTRIBUTES="service.name={{ service_name | default('openstack-vm') }},environment={{ environment }},host.id={{ ansible_hostname }},cloud.provider=openstack,cloud.region={{ openstack_region | default('RegionOne') }}"
+          
+          # Memory limit
+          NEW_RELIC_MEMORY_LIMIT_MIB=100
+        dest: /etc/nrdot-collector-host/nrdot-collector-host.env
+        mode: '0644'
+      notify: restart nrdot
+
+    - name: Update systemd service to use environment file
+      lineinfile:
+        path: /lib/systemd/system/nrdot-collector-host.service
+        insertafter: '^\[Service\]'
+        line: 'EnvironmentFile=/etc/nrdot-collector-host/nrdot-collector-host.env'
+        state: present
+      notify:
+        - reload systemd
+        - restart nrdot
+
+    - name: Ensure NRDOT collector is enabled and started
+      systemd:
+        name: nrdot-collector-host
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    - name: Wait for NRDOT collector to be ready
+      wait_for:
+        port: 4317
+        delay: 5
+        timeout: 30
+      ignore_errors: yes
+
+    - name: Check NRDOT collector status
+      command: systemctl status nrdot-collector-host
+      register: nrdot_status
+      changed_when: false
+      failed_when: false
+
+    - name: Display NRDOT collector status
+      debug:
+        var: nrdot_status.stdout_lines
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: restart nrdot
+      systemd:
+        name: nrdot-collector-host
+        state: restarted
+
+---
+- name: Configure application to send telemetry to NRDOT
+  hosts: all
+  become: yes
+  vars:
+    nrdot_endpoint: "http://localhost:4317"
+
+  tasks:
+    - name: Configure application OTLP export (if applicable)
+      lineinfile:
+        path: /etc/environment
+        line: "{{ item }}"
+        state: present
+      loop:
+        - "OTEL_EXPORTER_OTLP_ENDPOINT={{ nrdot_endpoint }}"
+        - "OTEL_EXPORTER_OTLP_PROTOCOL=grpc"
+        - "OTEL_SERVICE_NAME={{ service_name | default('openstack-app') }}"
+
+    - name: Create example Python script with OpenTelemetry
+      copy:
+        content: |
+          #!/usr/bin/env python3
+          """
+          Example script showing how to send telemetry to local NRDOT collector
+          """
+          from opentelemetry import trace, metrics
+          from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+          from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+          from opentelemetry.sdk.trace import TracerProvider
+          from opentelemetry.sdk.trace.export import BatchSpanProcessor
+          from opentelemetry.sdk.metrics import MeterProvider
+          from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+          import time
+          
+          # Configure trace provider
+          trace.set_tracer_provider(TracerProvider())
+          tracer = trace.get_tracer(__name__)
+          
+          # Configure trace exporter to local NRDOT
+          otlp_exporter = OTLPSpanExporter(endpoint="{{ nrdot_endpoint }}", insecure=True)
+          span_processor = BatchSpanProcessor(otlp_exporter)
+          trace.get_tracer_provider().add_span_processor(span_processor)
+          
+          # Configure metrics
+          metric_reader = PeriodicExportingMetricReader(
+              exporter=OTLPMetricExporter(endpoint="{{ nrdot_endpoint }}", insecure=True)
+          )
+          metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
+          meter = metrics.get_meter(__name__)
+          
+          # Create a counter
+          counter = meter.create_counter(
+              "app.requests",
+              description="Number of requests",
+              unit="1"
+          )
+          
+          # Example usage
+          with tracer.start_as_current_span("example-operation"):
+              counter.add(1, {"endpoint": "/api/test"})
+              time.sleep(0.1)
+              print("Telemetry sent to NRDOT collector!")
+        dest: /opt/otel-example.py
+        mode: '0755'
+
+    - name: Install OpenTelemetry Python packages (optional)
+      pip:
+        name:
+          - opentelemetry-api
+          - opentelemetry-sdk
+          - opentelemetry-exporter-otlp
+        state: present
+      when: ansible_python_version is version('3.6', '>=')
+      ignore_errors: yes

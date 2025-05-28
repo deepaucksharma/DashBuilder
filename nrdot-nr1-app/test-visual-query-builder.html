@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visual Query Builder Test</title>
+    <script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    <link rel="stylesheet" href="../shared-components/dist/visual-query-builder.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2a2b2b;
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+        }
+        .test-section h2 {
+            color: #007e8b;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        .query-output {
+            background: #f4f5f5;
+            border: 1px solid #e3e4e4;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .metrics-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .metric-item {
+            background: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+        #root {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Visual Query Builder Component Test</h1>
+        
+        <div class="test-section">
+            <h2>Component Info</h2>
+            <p>Testing the Visual Query Builder component from <strong>@dashbuilder/shared-components@0.2.0</strong></p>
+            <p>This component provides an interactive UI for building NRQL queries with validation.</p>
+        </div>
+
+        <div class="test-section">
+            <h2>Test Metrics</h2>
+            <div class="metrics-list">
+                <div class="metric-item">ProcessSample.cpuPercent</div>
+                <div class="metric-item">ProcessSample.memoryResidentSizeBytes</div>
+                <div class="metric-item">ProcessSample.ioReadBytesPerSecond</div>
+                <div class="metric-item">ProcessSample.ioWriteBytesPerSecond</div>
+                <div class="metric-item">SystemSample.cpuPercent</div>
+                <div class="metric-item">SystemSample.memoryUsedPercent</div>
+                <div class="metric-item">NetworkSample.receiveBytesPerSecond</div>
+                <div class="metric-item">NetworkSample.transmitBytesPerSecond</div>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>Test Dimensions</h2>
+            <div class="metrics-list">
+                <div class="metric-item">processDisplayName</div>
+                <div class="metric-item">hostname</div>
+                <div class="metric-item">commandLine</div>
+                <div class="metric-item">entityGuid</div>
+                <div class="metric-item">processId</div>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>Visual Query Builder</h2>
+            <div id="root"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Generated Query</h2>
+            <div class="query-output" id="query-output">No query generated yet</div>
+        </div>
+
+        <div class="test-section">
+            <h2>Query Validation</h2>
+            <div id="validation-output">Validation status will appear here</div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import the components from the built files
+        import('../shared-components/dist/dash-builder-shared.esm.js').then(({ VisualQueryBuilder }) => {
+            const { createElement } = React;
+            const { render } = ReactDOM;
+            
+            // Test data
+            const testMetrics = [
+                { value: 'ProcessSample.cpuPercent', label: 'CPU Percent' },
+                { value: 'ProcessSample.memoryResidentSizeBytes', label: 'Memory Resident Size' },
+                { value: 'ProcessSample.ioReadBytesPerSecond', label: 'IO Read Bytes/Sec' },
+                { value: 'ProcessSample.ioWriteBytesPerSecond', label: 'IO Write Bytes/Sec' },
+                { value: 'SystemSample.cpuPercent', label: 'System CPU Percent' },
+                { value: 'SystemSample.memoryUsedPercent', label: 'System Memory Used %' },
+                { value: 'NetworkSample.receiveBytesPerSecond', label: 'Network Receive Bytes/Sec' },
+                { value: 'NetworkSample.transmitBytesPerSecond', label: 'Network Transmit Bytes/Sec' }
+            ];
+            
+            const testDimensions = [
+                { value: 'processDisplayName', label: 'Process Name' },
+                { value: 'hostname', label: 'Hostname' },
+                { value: 'commandLine', label: 'Command Line' },
+                { value: 'entityGuid', label: 'Entity GUID' },
+                { value: 'processId', label: 'Process ID' }
+            ];
+            
+            // Create the component
+            const App = () => {
+                const handleQueryChange = (query) => {
+                    console.log('Query changed:', query);
+                    document.getElementById('query-output').textContent = query;
+                };
+                
+                const handleQueryRun = (query) => {
+                    console.log('Running query:', query);
+                    document.getElementById('validation-output').innerHTML = 
+                        '<span style="color: green;">✓ Query is valid and ready to run</span>';
+                };
+                
+                return createElement(VisualQueryBuilder, {
+                    onQueryChange: handleQueryChange,
+                    onQueryRun: handleQueryRun,
+                    availableMetrics: testMetrics,
+                    availableDimensions: testDimensions,
+                    initialQuery: {
+                        select: ['average(ProcessSample.cpuPercent)'],
+                        from: 'ProcessSample',
+                        where: [],
+                        facet: ['processDisplayName'],
+                        since: '1 hour ago'
+                    }
+                });
+            };
+            
+            // Render the component
+            render(createElement(App), document.getElementById('root'));
+            
+            console.log('Visual Query Builder loaded successfully');
+        }).catch(error => {
+            console.error('Failed to load Visual Query Builder:', error);
+            document.getElementById('root').innerHTML = 
+                '<div style="color: red;">Failed to load component: ' + error.message + '</div>';
+        });
+    </script>
+</body>
+</html>

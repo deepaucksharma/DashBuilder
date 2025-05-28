@@ -3,10 +3,10 @@
   "details": "NRDOT (New Relic Dynamic Optimization for Telemetry) transforms raw host-process telemetry into cost-efficient insights. Reduce your metrics volume by 70%+ while maintaining critical visibility.",
   "categoryTerms": ["observability", "infrastructure", "cost optimization"],
   "keywords": ["telemetry", "cost", "optimization", "host", "process", "metrics"],
-  "repository": "https://github.com/your-org/nrdot-nr1-app",
+  "repository": "https://github.com/dashbuilder/nrdot-nr1-app",
   "whatsNew": "Version 2.0: Complete UI rewrite with real-time control, smart targeting, and experiment management",
   "support": {
-    "url": "https://github.com/your-org/nrdot-nr1-app/issues",
-    "email": "support@your-org.com"
+    "url": "https://github.com/dashbuilder/nrdot-nr1-app/issues",
+    "email": "nrdot-support@dashbuilder.io"
   }
 }

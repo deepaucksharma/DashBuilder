@@ -1,0 +1,38 @@
+receivers:
+  hostmetrics:
+    collection_interval: 30s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      filesystem:
+      load:
+      network:
+
+processors:
+  resource:
+    attributes:
+      - key: service.name
+        value: openstack-vm
+        action: upsert
+      - key: environment  
+        value: production
+        action: upsert
+  
+  batch:
+    timeout: 10s
+
+exporters:
+  otlphttp:
+    endpoint: https://otlp.nr-data.net:4318
+    headers:
+      api-key: ${NEW_RELIC_LICENSE_KEY}
+    compression: gzip
+    timeout: 30s
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      processors: [resource, batch]
+      exporters: [otlphttp]

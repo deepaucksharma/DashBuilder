@@ -1,0 +1,64 @@
+#cloud-config
+hostname: ${hostname}
+manage_etc_hosts: true
+
+packages:
+  - nginx
+  - python3
+  - python3-pip
+  - wget
+  - ca-certificates
+
+write_files:
+  - path: /tmp/install-nrdot.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -e
+      NRDOT_VERSION="1.1.0"
+      NEW_RELIC_LICENSE_KEY="${new_relic_license_key}"
+      NRDOT_REPO="https://github.com/newrelic/nrdot-collector-releases/releases"
+      
+      # Detect architecture
+      ARCH=$(uname -m)
+      case $ARCH in
+          x86_64) ARCH="amd64" ;;
+          aarch64) ARCH="arm64" ;;
+      esac
+      
+      # Download and install NRDOT
+      DEB_FILE="nrdot-collector-host_$${NRDOT_VERSION}_linux_$${ARCH}.deb"
+      wget -q -O "/tmp/$${DEB_FILE}" "$${NRDOT_REPO}/download/v$${NRDOT_VERSION}/$${DEB_FILE}"
+      dpkg -i "/tmp/$${DEB_FILE}" || apt-get install -f -y
+      
+      # Configure NRDOT
+      mkdir -p /etc/nrdot-collector-host
+      cat > /etc/nrdot-collector-host/nrdot-collector-host.env << EOF
+      NEW_RELIC_LICENSE_KEY=$${NEW_RELIC_LICENSE_KEY}
+      OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.nr-data.net
+      OTEL_RESOURCE_ATTRIBUTES="service.name=openstack-vm,environment=${environment},host.id=${hostname},cloud.provider=openstack"
+      NEW_RELIC_MEMORY_LIMIT_MIB=100
+      EOF
+      
+      # Update systemd service
+      sed -i '/\[Service\]/a EnvironmentFile=/etc/nrdot-collector-host/nrdot-collector-host.env' \
+          /lib/systemd/system/nrdot-collector-host.service
+      
+      systemctl daemon-reload
+      systemctl enable nrdot-collector-host
+      systemctl start nrdot-collector-host
+
+runcmd:
+  - systemctl start nginx
+  - systemctl enable nginx
+  - echo "<h1>Welcome to ${hostname}</h1><p>Monitored by NRDOT Collector</p>" > /var/www/html/index.html
+  - /tmp/install-nrdot.sh
+  - |
+    # Verify NRDOT is running
+    sleep 10
+    if systemctl is-active nrdot-collector-host; then
+      echo "NRDOT collector is running successfully"
+    else
+      echo "NRDOT collector failed to start"
+      journalctl -u nrdot-collector-host -n 50
+    fi

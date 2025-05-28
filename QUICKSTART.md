@@ -1,216 +1,372 @@
-# NRDOT v2 Quick Start Guide
+# DashBuilder Quick Start Guide
 
-This guide will help you get NRDOT v2 up and running in minutes with the fixed architecture.
+Get DashBuilder and NRDOT v2 running in under 5 minutes!
 
-## Prerequisites
+## 📋 Prerequisites
 
-- Docker and Docker Compose installed
-- New Relic account with:
-  - License Key
-  - API Key (with NRQL query permissions)
-  - Account ID
+- **Docker & Docker Compose** (v20.10+)
+- **Node.js** (v16+ for local development)
+- **New Relic Account** with:
+  - 🔑 License Key (for data ingestion)
+  - 👤 User API Key (for NerdGraph access)
+  - 🔍 Query Key (for Insights API)
+  - 🆔 Account ID
 
-## Quick Setup
+## 🚀 5-Minute Setup
 
-### 1. Clone and Setup Environment
+### 1. Clone and Configure
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd DashBuilder
+git clone https://github.com/your-org/dashbuilder.git
+cd dashbuilder
 
-# Copy environment template
+# Setup environment variables
 cp .env.example .env
-
-# Edit .env with your New Relic credentials
-nano .env  # or use your preferred editor
 ```
 
-### 2. Clean Up Old Files (Optional)
-
-If upgrading from previous version:
-
+**Edit `.env` with your credentials:**
 ```bash
-# Review what will be removed
-./cleanup-redundant-files.sh
-
-# Actually remove redundant files
-./cleanup-redundant-files.sh execute
-```
-
-### 3. Start NRDOT
-
-```bash
-# Start with default (balanced) profile
-docker-compose -f docker-compose-test.yml up -d
-
-# Or specify a profile
-OPTIMIZATION_MODE=conservative docker-compose -f docker-compose-test.yml up -d
-```
-
-### 4. Verify Setup
-
-```bash
-# Check if services are running
-docker-compose -f docker-compose-test.yml ps
-
-# Check collector health
-curl http://localhost:13133/health
-
-# View collector metrics
-curl http://localhost:8888/metrics
-
-# Check logs
-docker-compose -f docker-compose-test.yml logs -f collector
-```
-
-### 5. Deploy Dashboard
-
-```bash
-# Deploy the aligned dashboard
-node scripts/src/cli.js dashboard create nrdot-dashboard-aligned.json
-```
-
-## Available Profiles
-
-- **conservative**: Maximum filtering, 60s collection interval, lowest cost
-- **balanced**: Good coverage with reasonable cost, 30s interval
-- **aggressive**: Maximum data collection, 10s interval, highest coverage
-
-## Testing
-
-### Generate Test Metrics
-
-```bash
-# Start metrics generator
-node scripts/metrics-generator-fixed.js
-
-# Or use Docker profile
-docker-compose -f docker-compose-test.yml --profile test up metrics-generator
-```
-
-### Run Experiments
-
-```bash
-# Run experiments across all profiles
-EXPERIMENT_DURATION=600 node scripts/experiment-runner-fixed.js
-```
-
-### Monitor Control Loop
-
-```bash
-# View control loop decisions
-docker-compose -f docker-compose-test.yml logs -f control-loop
-```
-
-## Configuration
-
-### Key Environment Variables
-
-```bash
-# Required
-NEW_RELIC_LICENSE_KEY=your_license_key
-NEW_RELIC_API_KEY=your_api_key
+# Required New Relic Keys
+NEW_RELIC_LICENSE_KEY=your_40_char_license_key
+NEW_RELIC_USER_API_KEY=your_user_api_key
 NEW_RELIC_ACCOUNT_ID=your_account_id
+NEW_RELIC_QUERY_KEY=your_query_key
 
-# Optional (with defaults)
-OPTIMIZATION_MODE=balanced            # Profile: conservative, balanced, aggressive
-CONTROL_LOOP_INTERVAL=300            # Seconds between control loop checks
-TARGET_COST_REDUCTION=0.70           # Target 70% cost reduction
-CRITICAL_PROCESS_THRESHOLD=0.95      # Maintain 95% coverage
+# Optional Configuration
+NEW_RELIC_REGION=US                  # or EU
+OPTIMIZATION_PROFILE=balanced        # or conservative/aggressive
+CONTROL_LOOP_INTERVAL=300000         # 5 minutes
 ```
+
+### 2. Install Dependencies
+
+```bash
+# Install Node.js dependencies
+npm install
+
+# Run interactive setup wizard
+npm run setup
+```
+
+The setup wizard will:
+- ✅ Verify your API keys
+- ✅ Test New Relic connectivity
+- ✅ Create necessary directories
+- ✅ Initialize configuration
+
+### 3. Start Services
+
+```bash
+# Start all services (recommended)
+docker-compose up -d
+
+# Or start with a specific profile
+OPTIMIZATION_PROFILE=conservative docker-compose up -d
+
+# View logs
+docker-compose logs -f
+```
+
+**Services started:**
+- 🗄️ PostgreSQL (port 5432)
+- 🔴 Redis (port 6379)
+- 📡 OTEL Collector (ports 4317, 8889)
+- 🤖 Control Loop
+- 🌐 DashBuilder API (port 3000)
+
+### 4. Verify Installation
+
+```bash
+# Test New Relic connectivity
+npm run test:connection
+
+# Run full diagnostics
+npm run diagnostics:all
+
+# Check service health
+docker-compose ps
+
+# Verify collector is receiving metrics
+curl http://localhost:8889/metrics | grep otelcol_receiver_accepted_metric_points
+```
+
+**Expected output:**
+```
+✅ Insights Query API: Success
+✅ NerdGraph API: Success (if User API Key is set)
+✅ All services: Up and healthy
+✅ Metrics flowing: Yes
+```
+
+### 5. Deploy Your First Dashboard
+
+```bash
+# Create NRDOT monitoring dashboard
+npm run cli dashboard create dashboards/nrdot-main.json
+
+# Or use the interactive CLI
+npm run cli
+```
+
+**Dashboard includes:**
+- 📊 Process metrics and coverage
+- 💵 Cost tracking and projections  
+- 📈 Performance indicators
+- 🚨 Anomaly detection alerts
+
+## 🎯 Optimization Profiles
+
+| Profile | Coverage | Cost Reduction | Interval | Best For |
+|---------|----------|----------------|----------|----------|
+| **baseline** | 100% | 0% | 10s | Debugging, full visibility |
+| **conservative** | 95% | 30% | 30s | Production systems |
+| **balanced** | 90% | 60% | 30s | **Recommended default** |
+| **aggressive** | 80% | 85% | 60s | Cost-sensitive environments |
+
+Switch profiles dynamically:
+```bash
+# Via environment variable
+export OPTIMIZATION_PROFILE=aggressive
+docker-compose restart control-loop
+
+# Or let the control loop decide automatically
+npm run control-loop
+```
+
+## 🧪 Run Your First Experiment
+
+### Quick 5-Minute Test
+
+```bash
+# Run a quick comparison of profiles
+npm run experiment:quick
+
+# View results
+npm run experiment:results
+```
+
+### Full Experiment Suite
+
+```bash
+# List available experiments
+npm run experiment:list
+
+# Run specific experiment
+npm run experiment:run cost-optimization-basic
+
+# Compare multiple runs
+npm run experiment:compare exp-001 exp-002
+```
+
+### Monitor in Real-Time
+
+```bash
+# Watch control loop decisions
+docker-compose logs -f control-loop
+
+# Monitor optimization metrics
+npm run monitor
+
+# View live metrics in New Relic
+open https://one.newrelic.com
+```
+
+## ⚙️ Advanced Configuration
 
 ### Process Filtering
 
 ```bash
-# Include/exclude patterns (regex)
-PROCESS_INCLUDE_PATTERN=.*
-PROCESS_EXCLUDE_PATTERN=(kernel|systemd-|ssh-agent|kworker)
+# Customize what processes to monitor
+PROCESS_INCLUDE_PATTERN=.*           # Include all by default
+PROCESS_EXCLUDE_PATTERN=(kernel|systemd-|ssh-agent)
 
-# Minimum thresholds
-MIN_CPU_THRESHOLD=0.1              # CPU percentage
-MIN_MEMORY_THRESHOLD=10485760      # Memory in bytes (10MB)
+# Resource thresholds
+MIN_CPU_THRESHOLD=0.1                # Minimum 0.1% CPU
+MIN_MEMORY_THRESHOLD=10485760        # Minimum 10MB memory
+
+# Importance scoring
+PROCESS_IMPORTANCE_THRESHOLD=0.8     # 0-1 scale
+MAX_PROCESSES_PER_HOST=50            # Limit per host
 ```
 
-## Monitoring
+### Control Loop Tuning
 
-### View in New Relic
+```bash
+# Optimization behavior
+TARGET_COST_REDUCTION=0.70          # Aim for 70% reduction
+CRITICAL_PROCESS_THRESHOLD=0.95     # Keep 95% coverage
+ANOMALY_SENSITIVITY=2.5             # Standard deviations
 
-1. Go to your New Relic account
-2. Navigate to Dashboards
-3. Find "NRDOT v2 - Process Monitoring (Aligned)"
-4. Monitor:
-   - Process count and coverage
-   - Estimated cost per hour
-   - Top processes by CPU/Memory
-   - OTEL collector health
+# Timing
+CONTROL_LOOP_INTERVAL=300000        # Check every 5 minutes
+PROFILE_SWITCH_COOLDOWN=900000      # Wait 15 min between switches
+```
+
+## 📈 Monitoring & Dashboards
+
+### New Relic Dashboards
+
+1. **Login to New Relic**
+   ```bash
+   open https://one.newrelic.com
+   ```
+
+2. **Find Your Dashboards**
+   - Navigate to: Dashboards → "NRDOT v2 Monitoring"
+   - Key metrics displayed:
+     - 📦 Process count and coverage percentage
+     - 💰 Estimated hourly/monthly costs
+     - 🔝 Top 10 processes by resource usage
+     - 📉 Optimization effectiveness trends
+     - 🚨 Anomaly detection alerts
 
 ### Local Monitoring
 
 ```bash
-# Prometheus metrics
-http://localhost:8888/metrics
+# Prometheus metrics endpoint
+open http://localhost:8889/metrics
 
-# With monitoring profile
-docker-compose -f docker-compose-test.yml --profile monitoring up -d
+# Health check endpoint  
+open http://localhost:13133/health
 
-# Access Grafana
-http://localhost:3000 (admin/changeme)
+# Optional: Start Grafana
+docker-compose --profile monitoring up -d
+open http://localhost:3000  # admin/admin
 ```
 
-## Troubleshooting
-
-### No metrics appearing
+### CLI Monitoring
 
 ```bash
-# Check collector logs
-docker-compose -f docker-compose-test.yml logs collector
+# Real-time metrics
+npm run monitor
 
-# Verify environment variables
-docker-compose -f docker-compose-test.yml config
+# Find specific metrics
+npm run find-metrics -- --pattern "process"
 
-# Test collector config
-docker run --rm -v $(pwd)/configs/profiles/balanced.yaml:/config.yaml \
-  otel/opentelemetry-collector-contrib:0.91.0 \
-  --config=/config.yaml --dry-run
+# Validate dashboards
+npm run validate-dashboards
 ```
 
-### High memory usage
+## 🔥 Troubleshooting
+
+### Common Issues
+
+#### 🚫 No metrics in New Relic
+```bash
+# 1. Check connectivity
+npm run test:connection
+
+# 2. Verify collector is sending data
+curl http://localhost:8889/metrics | grep "sent_metric_points"
+
+# 3. Check for errors
+docker-compose logs collector | grep -i error
+
+# 4. Run full diagnostics
+npm run diagnostics:all
+```
+
+#### 🔴 Authentication errors (403)
+```bash
+# Verify license key format (40 characters)
+echo $NEW_RELIC_LICENSE_KEY | wc -c
+
+# Test with curl
+curl -X POST https://otlp.nr-data.net/v1/metrics \
+  -H "Api-Key: $NEW_RELIC_LICENSE_KEY" \
+  -H "Content-Type: application/x-protobuf"
+```
+
+#### 💻 High memory/CPU usage
+```bash
+# Switch to conservative profile immediately
+docker-compose exec control-loop \
+  redis-cli SET current_profile conservative
+
+docker-compose restart collector
+```
+
+#### 🔍 Missing critical processes
+```bash
+# Temporarily disable filtering
+export PROCESS_INCLUDE_PATTERN=".*"
+export MIN_CPU_THRESHOLD=0.001
+docker-compose up -d collector
+```
+
+### Get Help
 
 ```bash
-# Switch to conservative profile
-docker-compose -f docker-compose-test.yml exec control-loop \
-  sh -c 'echo "conservative" > /var/lib/nrdot/profile'
-docker-compose -f docker-compose-test.yml restart collector
+# Generate debug report
+npm run diagnostics:debug > debug-report.txt
+
+# Check documentation
+npm run docs
+
+# Community support
+open https://github.com/your-org/dashbuilder/discussions
 ```
 
-### Missing processes
+## 🏢 Production Deployment
 
+### Docker Deployment
 ```bash
-# Check current filters
-docker-compose -f docker-compose-test.yml exec collector \
-  cat /etc/otel/config.yaml | grep -A5 process
+# Build optimized image
+docker build -t dashbuilder:latest .
 
-# Adjust filters in .env
-PROCESS_INCLUDE_PATTERN=.*
-MIN_CPU_THRESHOLD=0.01
+# Run with production settings
+docker run -d \
+  --name dashbuilder \
+  --env-file .env.production \
+  -p 3000:3000 \
+  dashbuilder:latest
 ```
 
-## Production Deployment
-
-For production, use the simplified Docker setup:
-
+### Kubernetes Deployment
 ```bash
-# Build production image
-docker build -f Dockerfile.simple -t nrdot:latest .
+# Apply configurations
+kubectl apply -f k8s/
 
-# Deploy with your orchestrator (K8s, ECS, etc.)
-# See docs/06-deployment.md for detailed instructions
+# Verify deployment
+kubectl get pods -n dashbuilder
+kubectl logs -n dashbuilder -l app=control-loop
 ```
 
-## Next Steps
+### Cloud Platforms
+- **AWS ECS**: See [docs/deployment-guide.md#ecs](docs/deployment-guide.md#ecs)
+- **Google Cloud Run**: See [docs/deployment-guide.md#gcr](docs/deployment-guide.md#gcr)
+- **Azure Container**: See [docs/deployment-guide.md#azure](docs/deployment-guide.md#azure)
 
-- Review [Architecture Documentation](docs/01-overview.md)
-- Configure [Advanced Settings](docs/02-configuration.md)
-- Set up [Automated Control Loop](docs/03-control-loop.md)
-- Deploy to [Production](docs/06-deployment.md)
+## 🎓 Next Steps
+
+### Essential Reading
+1. 📖 [Project Status & Roadmap](PROJECT-STATUS.md) - Current state and plans
+2. 🏗️ [Architecture Deep Dive](docs/architecture.md) - System design details
+3. 🧪 [Experiment Guide](experiments/README.md) - Run comparisons
+4. 🏭 [Production Setup](docs/production-setup.md) - Scale to production
+
+### Quick Actions
+```bash
+# Explore the CLI
+npm run cli help
+
+# Run your first experiment
+npm run experiment:quick
+
+# Create custom dashboard
+npm run cli dashboard create --interactive
+
+# View all available commands
+npm run
+```
+
+### Join the Community
+- ⭐ [Star us on GitHub](https://github.com/your-org/dashbuilder)
+- 💬 [Join Discussions](https://github.com/your-org/dashbuilder/discussions)
+- 🐛 [Report Issues](https://github.com/your-org/dashbuilder/issues)
+- 📧 [Contact Support](mailto:support@dashbuilder.io)
+
+---
+
+**Need help?** Run `npm run help` or check our [troubleshooting guide](docs/TROUBLESHOOTING_RUNBOOK.md).

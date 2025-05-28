@@ -1,0 +1,99 @@
+heat_template_version: 2018-08-31
+
+description: Web server instance template
+
+parameters:
+  key_name:
+    type: string
+    description: Name of keypair
+    
+  image:
+    type: string
+    description: Name of image
+    
+  flavor:
+    type: string
+    description: Flavor to use
+    
+  network:
+    type: string
+    description: Network ID
+    
+  subnet:
+    type: string
+    description: Subnet ID
+    
+  security_group:
+    type: string
+    description: Security group ID
+    
+  pool_id:
+    type: string
+    description: Load balancer pool ID
+    
+  metadata:
+    type: json
+    description: Metadata for the server
+
+resources:
+  server:
+    type: OS::Nova::Server
+    properties:
+      name: 
+        str_replace:
+          template: base-name
+          params:
+            base: { get_param: "OS::stack_name" }
+            name: { get_param: "OS::stack_id" }
+      key_name: { get_param: key_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      networks:
+        - network: { get_param: network }
+      security_groups:
+        - { get_param: security_group }
+      metadata: { get_param: metadata }
+      user_data_format: RAW
+      user_data: |
+        #!/bin/bash
+        # For Ubuntu/Debian based images
+        if command -v apt-get >/dev/null 2>&1; then
+          apt-get update
+          apt-get install -y nginx
+          
+          cat > /var/www/html/index.html << EOF
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>OpenStack Heat Deployed Server</title>
+        </head>
+        <body>
+            <h1>Hello from $(hostname)</h1>
+            <p>This server was deployed using Heat orchestration</p>
+            <p>Instance ID: $(curl -s http://169.254.169.254/latest/meta-data/instance-id)</p>
+            <p>Local IP: $(hostname -I | awk '{print $1}')</p>
+        </body>
+        </html>
+        EOF
+          
+          systemctl start nginx
+          systemctl enable nginx
+        fi
+        
+        # For CirrOS (minimal testing)
+        if [ -f /etc/cirros-init ]; then
+          echo "HTTP/1.0 200 OK\r\n\r\n<h1>Hello from $(hostname)</h1>" | nc -l -p 80 &
+        fi
+
+  pool_member:
+    type: OS::Octavia::PoolMember
+    properties:
+      pool: { get_param: pool_id }
+      address: { get_attr: [server, first_address] }
+      protocol_port: 80
+      subnet: { get_param: subnet }
+
+outputs:
+  server_ip:
+    description: IP address of the server
+    value: { get_attr: [server, first_address] }

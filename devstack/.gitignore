@@ -1,0 +1,93 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Keep example files
+!.env.example
+
+# OpenStack files
+openrc
+*-openrc.sh
+clouds.yaml
+
+# SSH Keys
+*.pem
+*.key
+id_rsa*
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfplan
+*.tfvars
+
+# Ansible
+*.retry
+inventory.ini
+ansible.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+devstack-data/
+
+# Generated files
+k6-results.json
+bandit-report.json
+safety-report.json
+test-results.xml
+
+# Collector configs with potential secrets
+collector-config-*.yaml
+*-secure.yaml
+/tmp/collector-config-*.yaml
+
+# Certificates
+*.crt
+*.p12
+*.jks
+certs/
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Sensitive documentation
+*-credentials.md
+*-secrets.md
+*-keys.txt
+
+# Keep templates
+!.env.template
+!*-example.yaml

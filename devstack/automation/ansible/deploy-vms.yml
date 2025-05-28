@@ -1,0 +1,109 @@
+---
+- name: Deploy VMs on OpenStack
+  hosts: localhost
+  gather_facts: no
+  vars:
+    auth:
+      auth_url: http://localhost:5000/v3
+      username: admin
+      password: secret
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+    vm_count: 3
+    image_name: cirros-0.5.2-x86_64-disk
+    flavor_name: m1.small
+    network_name: app-network
+    subnet_cidr: 10.10.10.0/24
+
+  tasks:
+    - name: Create network
+      openstack.cloud.network:
+        auth: "{{ auth }}"
+        name: "{{ network_name }}"
+        state: present
+
+    - name: Create subnet
+      openstack.cloud.subnet:
+        auth: "{{ auth }}"
+        name: "{{ network_name }}-subnet"
+        network_name: "{{ network_name }}"
+        cidr: "{{ subnet_cidr }}"
+        enable_dhcp: yes
+        dns_nameservers:
+          - 8.8.8.8
+          - 8.8.4.4
+        state: present
+
+    - name: Create security group
+      openstack.cloud.security_group:
+        auth: "{{ auth }}"
+        name: app-security-group
+        description: Security group for application VMs
+        state: present
+
+    - name: Add security group rules
+      openstack.cloud.security_group_rule:
+        auth: "{{ auth }}"
+        security_group: app-security-group
+        protocol: "{{ item.protocol }}"
+        port_range_min: "{{ item.port_min }}"
+        port_range_max: "{{ item.port_max }}"
+        remote_ip_prefix: "{{ item.cidr }}"
+        state: present
+      loop:
+        - { protocol: tcp, port_min: 22, port_max: 22, cidr: "0.0.0.0/0" }
+        - { protocol: tcp, port_min: 80, port_max: 80, cidr: "0.0.0.0/0" }
+        - { protocol: tcp, port_min: 443, port_max: 443, cidr: "0.0.0.0/0" }
+        - { protocol: icmp, port_min: -1, port_max: -1, cidr: "0.0.0.0/0" }
+
+    - name: Create keypair
+      openstack.cloud.keypair:
+        auth: "{{ auth }}"
+        name: ansible-keypair
+        public_key_file: "{{ ansible_env.HOME }}/.ssh/id_rsa.pub"
+        state: present
+
+    - name: Launch VMs
+      openstack.cloud.server:
+        auth: "{{ auth }}"
+        name: "app-vm-{{ item }}"
+        image: "{{ image_name }}"
+        flavor: "{{ flavor_name }}"
+        network: "{{ network_name }}"
+        key_name: ansible-keypair
+        security_groups:
+          - app-security-group
+        auto_ip: yes
+        wait: yes
+        timeout: 600
+        metadata:
+          environment: production
+          app_type: web
+        state: present
+      loop: "{{ range(1, vm_count + 1) | list }}"
+      register: servers
+
+    - name: Display VM information
+      debug:
+        msg: "VM {{ item.server.name }} created with IP: {{ item.server.public_v4 }}"
+      loop: "{{ servers.results }}"
+      when: item.server is defined
+
+    - name: Create inventory file
+      copy:
+        content: |
+          [webservers]
+          {% for server in servers.results %}
+          {{ server.server.name }} ansible_host={{ server.server.public_v4 }} ansible_user=cirros
+          {% endfor %}
+        dest: ./inventory.ini
+
+    - name: Wait for SSH to be available
+      wait_for:
+        host: "{{ item.server.public_v4 }}"
+        port: 22
+        delay: 10
+        timeout: 300
+      loop: "{{ servers.results }}"
+      when: item.server is defined

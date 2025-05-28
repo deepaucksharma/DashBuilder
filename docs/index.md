@@ -1,11 +1,11 @@
-# NRDOT v2 Framework Documentation
+# DashBuilder Documentation Index
 
 <div align="center">
 
-**New Relic Dashboard Optimization Tool**  
-*Version 2.0 - Enterprise Edition*
+**DashBuilder with NRDOT v2 Process Optimization**  
+*70-85% telemetry cost reduction while maintaining 95%+ critical process coverage*
 
-[![Framework Version](https://img.shields.io/badge/NRDOT-v2.0-blue)]()
+[![Version](https://img.shields.io/badge/Version-2.0-blue)]()
 [![Status](https://img.shields.io/badge/Status-Production_Ready-green)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow)]()
 
@@ -13,20 +13,33 @@
 
 ---
 
-## 📚 Table of Contents
+## 📚 Documentation Hub
 
 ### Core Documentation
 
-| Document | Description | Status |
-|----------|-------------|--------|
-| [**Overview**](01-overview.md) | Executive summary and framework introduction | ✅ Complete |
-| [**Configuration Architecture**](02-configuration.md) | Comprehensive configuration guide and patterns | ✅ Complete |
-| [**Control Loop**](03-control-loop.md) | Implementation details and event handling | ✅ Complete |
-| [**Cross-Platform Patterns**](04-cross-platform.md) | Multi-platform support and best practices | ✅ Complete |
-| [**Monitoring & Observability**](05-monitoring.md) | Metrics, logging, and dashboard setup | ✅ Complete |
-| [**Deployment Playbook**](06-deployment.md) | Production deployment strategies | ✅ Complete |
-| [**Validation & Success**](07-validation.md) | Testing and success criteria | ✅ Complete |
-| [**Quick Start Guide**](README.md) | Get up and running in 5 minutes | ✅ Complete |
+| Document | Description | Quick Access |
+|----------|-------------|--------------|
+| [**Architecture**](architecture.md) | System design and components | [View →](architecture.md) |
+| [**API Reference**](api-reference.md) | Complete API documentation | [View →](api-reference.md) |
+| [**Deployment Guide**](deployment-guide.md) | All deployment methods | [View →](deployment-guide.md) |
+| [**Troubleshooting**](TROUBLESHOOTING_RUNBOOK.md) | Common issues and solutions | [View →](TROUBLESHOOTING_RUNBOOK.md) |
+
+### Guides & Tutorials
+
+| Guide | Purpose | Audience |
+|-------|---------|----------|
+| [**Quick Start**](../QUICKSTART.md) | Get running in 5 minutes | Everyone |
+| [**Experiment Tracking**](EXPERIMENT_TRACKING_GUIDE.md) | Run optimization experiments | DevOps/SRE |
+| [**Docker Monitoring**](DOCKER-MONITORING-GUIDE.md) | Container metrics setup | DevOps |
+| [**Production Setup**](production-setup.md) | Production best practices | SysAdmin |
+
+### Advanced Topics
+
+| Topic | Description | Link |
+|-------|-------------|------|
+| [**Advanced Scenarios**](ADVANCED_SCENARIOS.md) | Complex configurations | [View →](ADVANCED_SCENARIOS.md) |
+| [**Migration Guide**](migration-from-v1.md) | Upgrade from v1 | [View →](migration-from-v1.md) |
+| [**NRDOT v2 Update Plan**](nrdot-v2-production-update-plan.md) | Rollout strategy | [View →](nrdot-v2-production-update-plan.md) |
 
 ---
 
@@ -37,25 +50,25 @@
 <td width="33%">
 
 ### 🎯 Getting Started
-- [Installation](README.md#installation)
-- [Basic Configuration](02-configuration.md#basic-setup)
-- [First Dashboard](README.md#first-dashboard)
+- [Environment Setup](../QUICKSTART.md#environment-setup)
+- [First Experiment](EXPERIMENT_TRACKING_GUIDE.md#quick-start)
+- [View Metrics](../README.md#essential-commands)
 
 </td>
 <td width="33%">
 
-### 🔧 Advanced Topics
-- [Custom Backends](02-configuration.md#backend-definitions)
-- [Control Patterns](03-control-loop.md#patterns)
-- [Platform Support](04-cross-platform.md)
+### 🔧 Configuration
+- [Optimization Profiles](../README.md#optimization-profiles)
+- [Environment Variables](deployment-guide.md#environment-variables)
+- [Docker Setup](DOCKER-MONITORING-GUIDE.md)
 
 </td>
 <td width="33%">
 
 ### 📊 Operations
-- [Monitoring Setup](05-monitoring.md#setup)
-- [Production Deploy](06-deployment.md)
-- [Troubleshooting](05-monitoring.md#troubleshooting)
+- [Health Checks](deployment-guide.md#health-checks)
+- [Monitoring](production-setup.md#monitoring)
+- [Troubleshooting](TROUBLESHOOTING_RUNBOOK.md)
 
 </td>
 </tr>
@@ -63,100 +76,81 @@
 
 ---
 
-## 🏗️ Framework Overview
+## 🏗️ System Overview
 
-NRDOT v2 is a modern, enterprise-grade framework for managing Nginx reverse proxy configurations through intuitive dashboards. Built with scalability, reliability, and ease of use in mind.
+DashBuilder is a comprehensive platform that combines:
 
-### Key Features
+### NRDOT v2 Process Optimization
+- **Smart Filtering**: OS-aware process classification
+- **Dynamic Profiles**: Automatic optimization based on cost/coverage
+- **Real-time Monitoring**: Track savings and coverage metrics
+- **Anomaly Detection**: EWMA-based unusual behavior identification
 
-<table>
-<tr>
-<td width="50%">
+### Dashboard Management
+- **Automated Creation**: Generate dashboards from templates
+- **Schema Validation**: Ensure dashboard compatibility
+- **Version Control**: Track dashboard changes
+- **Bulk Operations**: Manage multiple dashboards
 
-#### 🎨 **Dashboard-Driven Management**
-- Visual configuration editor
-- Real-time status monitoring
-- Drag-and-drop backend management
-- Integrated health checks
-
-</td>
-<td width="50%">
-
-#### 🔄 **Control Loop Architecture**
-- Event-driven updates
-- Automatic failover
-- Self-healing capabilities
-- Zero-downtime reloads
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-#### 🌍 **Cross-Platform Support**
-- Linux (Ubuntu, RHEL, Alpine)
-- Windows Server 2019+
-- Docker & Kubernetes
-- Cloud-native ready
-
-</td>
-<td width="50%">
-
-#### 📊 **Enterprise Monitoring**
-- Prometheus metrics
-- Grafana dashboards
-- ELK stack integration
-- Real-time alerting
-
-</td>
-</tr>
-</table>
+### Experiment Framework
+- **A/B Testing**: Compare optimization profiles
+- **Metric Collection**: Automated performance tracking
+- **Results Analysis**: Visualize optimization impact
+- **Reproducible**: Consistent experiment execution
 
 ---
 
-## 📋 Documentation Standards
+## 📋 By Role
 
-> **Note:** All documentation follows these standards for consistency:
+### For DevOps Engineers
+1. Start with [Deployment Guide](deployment-guide.md)
+2. Set up [Docker Monitoring](DOCKER-MONITORING-GUIDE.md)
+3. Configure [Production Setup](production-setup.md)
+4. Review [Troubleshooting](TROUBLESHOOTING_RUNBOOK.md)
 
-- **Code Examples**: All code blocks include syntax highlighting and are tested
-- **Cross-References**: Documents link to related topics for easy navigation
-- **Visual Aids**: Diagrams and tables are used to clarify complex concepts
-- **Version Info**: Each document includes version compatibility information
+### For Developers
+1. Read [Architecture](architecture.md)
+2. Explore [API Reference](api-reference.md)
+3. Check [Dashboard Generator](../dashboard-generator/README.md)
+4. Review [CLI Tools](../scripts/README.md)
+
+### For Data Analysts
+1. Learn [Experiment Tracking](EXPERIMENT_TRACKING_GUIDE.md)
+2. Understand [Optimization Profiles](../README.md#optimization-profiles)
+3. Analyze [Metrics](api-reference.md#metrics)
+4. Create [Dashboards](../dashboard-generator/README.md)
 
 ---
 
 ## 🔍 Search by Topic
 
 <details>
-<summary><strong>Configuration Topics</strong></summary>
+<summary><strong>NRDOT Optimization</strong></summary>
 
-- [YAML Configuration Structure](02-configuration.md#yaml-structure)
-- [Backend Pool Management](02-configuration.md#backend-definitions)
-- [Health Check Configuration](02-configuration.md#health-checks)
-- [SSL/TLS Settings](02-configuration.md#ssl-configuration)
-- [Load Balancing Methods](02-configuration.md#load-balancing)
-
-</details>
-
-<details>
-<summary><strong>Operational Topics</strong></summary>
-
-- [Deployment Strategies](06-deployment.md#strategies)
-- [Monitoring Setup](05-monitoring.md#setup)
-- [Log Management](05-monitoring.md#logging)
-- [Performance Tuning](06-deployment.md#performance)
-- [Backup & Recovery](06-deployment.md#backup-recovery)
+- [Process Filtering](architecture.md#optimization-profiles)
+- [Control Loop](architecture.md#4-nrdot-control-loop)
+- [Cost Reduction](../README.md#optimization-profiles)
+- [Coverage Metrics](EXPERIMENT_TRACKING_GUIDE.md#key-metrics)
 
 </details>
 
 <details>
-<summary><strong>Development Topics</strong></summary>
+<summary><strong>Dashboard Management</strong></summary>
 
-- [API Reference](03-control-loop.md#api-reference)
-- [Event System](03-control-loop.md#event-system)
-- [Plugin Development](03-control-loop.md#plugins)
-- [Testing Framework](07-validation.md#testing)
-- [Contributing Guide](README.md#contributing)
+- [Dashboard Generator](architecture.md#1-dashboard-generator)
+- [Template Engine](../dashboard-generator/README.md)
+- [Schema Validation](api-reference.md#schema-validation)
+- [Bulk Operations](api-reference.md#bulk-operations)
+
+</details>
+
+<details>
+<summary><strong>Experiments</strong></summary>
+
+- [Running Experiments](EXPERIMENT_TRACKING_GUIDE.md#running-experiments)
+- [Profile Comparison](EXPERIMENT_TRACKING_GUIDE.md#profile-configuration)
+- [Results Analysis](EXPERIMENT_TRACKING_GUIDE.md#analyzing-results)
+- [Best Practices](EXPERIMENT_TRACKING_GUIDE.md#best-practices)
 
 </details>
 
@@ -164,57 +158,48 @@ NRDOT v2 is a modern, enterprise-grade framework for managing Nginx reverse prox
 
 ## 🎯 Learning Paths
 
-### Path 1: System Administrator
-1. Start with [Quick Start Guide](README.md)
-2. Master [Configuration](02-configuration.md)
-3. Learn [Deployment](06-deployment.md)
-4. Setup [Monitoring](05-monitoring.md)
+### Path 1: Quick Implementation
+1. [Quick Start](../QUICKSTART.md) - Get running fast
+2. [Run Experiment](EXPERIMENT_TRACKING_GUIDE.md#quick-experiment) - Test optimization
+3. [View Results](../README.md#essential-commands) - Check metrics
 
-### Path 2: Developer
-1. Understand [Overview](01-overview.md)
-2. Study [Control Loop](03-control-loop.md)
-3. Explore [Cross-Platform](04-cross-platform.md)
-4. Review [Validation](07-validation.md)
+### Path 2: Production Deployment
+1. [Architecture](architecture.md) - Understand the system
+2. [Deployment Guide](deployment-guide.md) - Deploy properly
+3. [Production Setup](production-setup.md) - Best practices
+4. [Monitoring](DOCKER-MONITORING-GUIDE.md) - Observe performance
 
-### Path 3: DevOps Engineer
-1. Review [Overview](01-overview.md)
-2. Setup [Monitoring](05-monitoring.md)
-3. Plan [Deployment](06-deployment.md)
-4. Validate [Success](07-validation.md)
+### Path 3: Advanced Optimization
+1. [Advanced Scenarios](ADVANCED_SCENARIOS.md) - Complex setups
+2. [Experiment Design](EXPERIMENT_TRACKING_GUIDE.md) - Thorough testing
+3. [Custom Profiles](architecture.md#optimization-profiles) - Fine-tuning
 
 ---
 
 ## 📞 Support & Resources
 
-<table>
-<tr>
-<td width="33%" align="center">
+### Internal Resources
+- [Project README](../README.md)
+- [Project Status](../PROJECT-STATUS.md)
+- [Project Structure](../PROJECT-STRUCTURE.md)
 
-### 💬 Community
-[Discord](https://discord.gg/nrdot) | [Forum](https://forum.nrdot.io)
+### Component Documentation
+- [Dashboard Generator](../dashboard-generator/README.md)
+- [Experiment Framework](../experiments/README.md)
+- [CLI Documentation](../scripts/README.md)
+- [DevStack Guide](../devstack/README.md)
 
-</td>
-<td width="33%" align="center">
-
-### 🐛 Issues
-[GitHub Issues](https://github.com/nrdot/v2/issues)
-
-</td>
-<td width="33%" align="center">
-
-### 📖 Updates
-[Blog](https://blog.nrdot.io) | [Changelog](CHANGELOG.md)
-
-</td>
-</tr>
-</table>
+### Getting Help
+- Check [Troubleshooting](TROUBLESHOOTING_RUNBOOK.md)
+- Review [Advanced Scenarios](ADVANCED_SCENARIOS.md)
+- Search codebase for examples
 
 ---
 
 <div align="center">
 
-**Ready to get started?** Head to the [Quick Start Guide](README.md) →
+**Ready to reduce telemetry costs?** Start with the [Quick Start Guide](../QUICKSTART.md) →
 
-*Last Updated: January 2024 | NRDOT v2.0*
+*Last Updated: November 2024 | DashBuilder v2.0*
 
 </div>

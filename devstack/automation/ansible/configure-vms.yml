@@ -1,0 +1,146 @@
+---
+- name: Configure deployed VMs
+  hosts: webservers
+  become: yes
+  gather_facts: yes
+  vars:
+    new_relic_license_key: "{{ lookup('env', 'NEW_RELIC_LICENSE_KEY') }}"
+
+  tasks:
+    - name: Update package cache (Ubuntu/Debian)
+      apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Install required packages
+      package:
+        name:
+          - nginx
+          - python3
+          - python3-pip
+          - git
+          - curl
+          - vim
+        state: present
+
+    - name: Create application directory
+      file:
+        path: /var/www/app
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: Deploy application configuration
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/sites-available/app
+        mode: '0644'
+      notify: restart nginx
+
+    - name: Enable site configuration
+      file:
+        src: /etc/nginx/sites-available/app
+        dest: /etc/nginx/sites-enabled/app
+        state: link
+      notify: restart nginx
+
+    - name: Deploy application
+      copy:
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>OpenStack VM {{ ansible_hostname }}</title>
+          </head>
+          <body>
+              <h1>Hello from {{ ansible_hostname }}</h1>
+              <p>This VM was deployed using Ansible on OpenStack</p>
+              <p>IP Address: {{ ansible_default_ipv4.address }}</p>
+          </body>
+          </html>
+        dest: /var/www/app/index.html
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+    - name: Start and enable nginx
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Include NRDOT collector deployment
+      include_tasks: deploy-nrdot.yml
+      when: new_relic_license_key is defined and new_relic_license_key != ""
+
+  handlers:
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted
+
+---
+- name: Create Load Balancer
+  hosts: localhost
+  gather_facts: no
+  vars:
+    auth:
+      auth_url: http://localhost:5000/v3
+      username: admin
+      password: secret
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+
+  tasks:
+    - name: Get subnet info
+      openstack.cloud.subnet_info:
+        auth: "{{ auth }}"
+        name: app-network-subnet
+      register: subnet_info
+
+    - name: Create load balancer
+      openstack.cloud.loadbalancer:
+        auth: "{{ auth }}"
+        name: app-lb
+        vip_subnet: "{{ subnet_info.openstack_subnets[0].id }}"
+        state: present
+      register: lb
+
+    - name: Create listener
+      openstack.cloud.lb_listener:
+        auth: "{{ auth }}"
+        name: app-listener
+        loadbalancer: "{{ lb.loadbalancer.id }}"
+        protocol: HTTP
+        protocol_port: 80
+        state: present
+      register: listener
+
+    - name: Create pool
+      openstack.cloud.lb_pool:
+        auth: "{{ auth }}"
+        name: app-pool
+        listener: "{{ listener.listener.id }}"
+        protocol: HTTP
+        lb_algorithm: ROUND_ROBIN
+        state: present
+      register: pool
+
+    - name: Get server info
+      openstack.cloud.server_info:
+        auth: "{{ auth }}"
+        server: "app-vm-*"
+      register: servers
+
+    - name: Add members to pool
+      openstack.cloud.lb_member:
+        auth: "{{ auth }}"
+        name: "member-{{ item.name }}"
+        pool: "{{ pool.pool.id }}"
+        address: "{{ item.private_v4 }}"
+        protocol_port: 80
+        subnet: "{{ subnet_info.openstack_subnets[0].id }}"
+        state: present
+      loop: "{{ servers.openstack_servers }}"

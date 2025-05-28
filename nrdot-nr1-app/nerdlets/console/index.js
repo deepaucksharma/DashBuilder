@@ -23,6 +23,8 @@ import ProfileControl from './components/ProfileControl';
 import LiveKPICards from './components/LiveKPICards';
 import ExperimentDrawer from './components/ExperimentDrawer';
 import SmartTargetDrawer from './components/SmartTargetDrawer';
+import NRQLQueryInput from './components/NRQLQueryInput';
+import VisualQueryBuilderModal from './components/VisualQueryBuilderModal';
 import { useProfileControl } from '../../lib/hooks/useProfileControl';
 import { useOptimizationState } from '../../lib/hooks/useOptimizationState';
 
@@ -42,6 +44,8 @@ export default function ConsoleNerdlet() {
   const [showSmartTarget, setShowSmartTarget] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingProfile, setPendingProfile] = useState(null);
+  const [activeTab, setActiveTab] = useState('optimization');
+  const [showQueryBuilder, setShowQueryBuilder] = useState(false);
 
   const handleProfileChange = useCallback((profile) => {
     setPendingProfile(profile);
@@ -79,6 +83,7 @@ export default function ConsoleNerdlet() {
             currentProfile={currentProfile}
             onOpenExperiments={() => setShowExperiments(true)}
             onOpenSmartTarget={() => setShowSmartTarget(true)}
+            onOpenQueryBuilder={() => setShowQueryBuilder(true)}
           />
         </GridItem>
         
@@ -144,12 +149,37 @@ export default function ConsoleNerdlet() {
             }}
           />
         )}
+        
+        {showQueryBuilder && (
+          <VisualQueryBuilderModal
+            isOpen={showQueryBuilder}
+            onClose={() => setShowQueryBuilder(false)}
+            onQueryRun={(queryData) => {
+              console.log('Executing query:', queryData);
+              Toast.showToast({
+                title: 'Query Executed',
+                description: `Running query: ${queryData.nrql}`,
+                type: Toast.TYPE.SUCCESS
+              });
+            }}
+            availableMetrics={[
+              'nrdot.host.cpu.usage',
+              'nrdot.host.memory.usage',
+              'nrdot.host.processes.count',
+              'nrdot.optimization.series.reduction',
+              'nrdot.optimization.cost.savings'
+            ]}
+            availableDimensions={[
+              'host', 'ring', 'profile', 'service', 'environment', 'region'
+            ]}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
 }
 
-function ConsoleHeader({ currentProfile, onOpenExperiments, onOpenSmartTarget }) {
+function ConsoleHeader({ currentProfile, onOpenExperiments, onOpenSmartTarget, onOpenQueryBuilder }) {
   return (
     <div className="console-header">
       <Stack 
@@ -188,6 +218,17 @@ function ConsoleHeader({ currentProfile, onOpenExperiments, onOpenSmartTarget })
           >
             <Icon type={Icon.TYPE.INTERFACE__OPERATIONS__GROUP} />
             Smart Target
+          </Button>
+        </StackItem>
+        
+        <StackItem>
+          <Button
+            type={Button.TYPE.NORMAL}
+            sizeType={Button.SIZE_TYPE.SMALL}
+            onClick={onOpenQueryBuilder}
+          >
+            <Icon type={Icon.TYPE.INTERFACE__OPERATIONS__SEARCH} />
+            Query Builder
           </Button>
         </StackItem>
       </Stack>

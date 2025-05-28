@@ -1,0 +1,39 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- NRDOT Icon - Process Optimization -->
+  
+  <!-- Background Circle -->
+  <circle cx="256" cy="256" r="240" fill="#007e8b" opacity="0.1"/>
+  
+  <!-- Outer Ring (Representing Full Telemetry) -->
+  <circle cx="256" cy="256" r="200" fill="none" stroke="#E3E4E4" stroke-width="20"/>
+  
+  <!-- Optimized Arc (70% reduction visualization) -->
+  <path d="M 256 56 A 200 200 0 0 1 456 256" fill="none" stroke="#007e8b" stroke-width="20" stroke-linecap="round"/>
+  
+  <!-- Center Process Symbol -->
+  <g transform="translate(256, 256)">
+    <!-- CPU Core -->
+    <rect x="-60" y="-60" width="120" height="120" rx="12" fill="#007e8b"/>
+    
+    <!-- Process Lines -->
+    <line x1="-30" y1="-30" x2="-30" y2="30" stroke="white" stroke-width="4"/>
+    <line x1="-10" y1="-30" x2="-10" y2="30" stroke="white" stroke-width="4"/>
+    <line x1="10" y1="-30" x2="10" y2="30" stroke="white" stroke-width="4"/>
+    <line x1="30" y1="-30" x2="30" y2="30" stroke="white" stroke-width="4"/>
+    
+    <!-- Optimization Arrow -->
+    <g transform="translate(0, 90)">
+      <path d="M -20 0 L 0 20 L 20 0" fill="none" stroke="#2CA02C" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <line x1="0" y1="-20" x2="0" y2="20" stroke="#2CA02C" stroke-width="6"/>
+    </g>
+  </g>
+  
+  <!-- Cost Reduction Indicator -->
+  <g transform="translate(380, 380)">
+    <circle r="50" fill="#2CA02C"/>
+    <text x="0" y="8" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="28" font-weight="bold">70%</text>
+  </g>
+  
+  <!-- NRDOT Text -->
+  <text x="256" y="480" text-anchor="middle" fill="#2A2B2B" font-family="Arial, sans-serif" font-size="36" font-weight="bold">NRDOT</text>
+</svg>

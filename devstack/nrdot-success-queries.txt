@@ -1,0 +1,47 @@
+NRDOT SUCCESS - ALL 5 COLLECTORS RUNNING!
+=========================================
+
+✅ All 5 VMs are running NRDOT collectors
+✅ No authentication errors (403s)
+✅ Explicit host.id set for each VM
+✅ Host filesystem mounted for proper metrics
+
+Collectors:
+- nrdot-vm-1: host.id=openstack-vm-1, ports 4331/4333
+- nrdot-vm-2: host.id=openstack-vm-2, ports 4332/4334
+- nrdot-vm-3: host.id=openstack-vm-3, ports 4319/4325
+- nrdot-vm-4: host.id=openstack-vm-4, ports 4320/4326
+- nrdot-vm-5: host.id=openstack-vm-5, ports 4321/4327
+
+QUERIES TO FIND YOUR DATA IN NEW RELIC:
+======================================
+
+1. Check if metrics are coming in:
+   SELECT count(*) FROM Metric WHERE host.id LIKE 'openstack-vm-%' SINCE 30 minutes ago
+
+2. See all metrics by host:
+   SELECT count(*) FROM Metric WHERE host.id IN ('openstack-vm-1','openstack-vm-2','openstack-vm-3','openstack-vm-4','openstack-vm-5') SINCE 30 minutes ago FACET host.id
+
+3. Check CPU metrics:
+   SELECT average(system.cpu.utilization) FROM Metric WHERE host.id LIKE 'openstack-vm-%' FACET host.id TIMESERIES SINCE 30 minutes ago
+
+4. Check memory metrics:
+   SELECT average(system.memory.utilization) FROM Metric WHERE host.id LIKE 'openstack-vm-%' FACET host.id SINCE 30 minutes ago
+
+5. See all metric names:
+   SELECT uniques(metricName) FROM Metric WHERE host.id LIKE 'openstack-vm-%' SINCE 30 minutes ago
+
+6. Check by service name:
+   SELECT count(*) FROM Metric WHERE service.name = 'openstack-vm' SINCE 30 minutes ago FACET host.id
+
+7. Check by environment:
+   SELECT count(*) FROM Metric WHERE environment = 'production' AND service.name = 'openstack-vm' SINCE 30 minutes ago
+
+DIRECT LINKS:
+============
+- Infrastructure: https://one.newrelic.com/infra
+- Query Builder: https://one.newrelic.com/data-explorer
+- Entity Explorer: https://one.newrelic.com/entity-explorer (search: openstack)
+
+The collectors have been running successfully for several minutes.
+Data should be visible in New Relic now!

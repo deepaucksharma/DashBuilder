@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  devstack:
+    image: ubuntu:22.04
+    container_name: devstack-full
+    hostname: devstack
+    privileged: true
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./devstack:/opt/stack/devstack
+      - devstack-data:/opt/stack
+      - /lib/modules:/lib/modules:ro
+    ports:
+      # OpenStack API ports
+      - "5000:5000"   # Keystone
+      - "8774:8774"   # Nova
+      - "8776:8776"   # Cinder
+      - "9292:9292"   # Glance
+      - "9696:9696"   # Neutron
+      - "8004:8004"   # Heat
+      - "6080:6080"   # noVNC
+      - "80:80"       # Horizon
+    environment:
+      - ADMIN_PASSWORD=secret
+      - DATABASE_PASSWORD=secret
+      - RABBIT_PASSWORD=secret
+      - SERVICE_PASSWORD=secret
+      - HOST_IP=172.20.0.10
+    networks:
+      devstack-net:
+        ipv4_address: 172.20.0.10
+    command: /bin/bash
+
+volumes:
+  devstack-data:
+
+networks:
+  devstack-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+          gateway: 172.20.0.1

@@ -1,0 +1,134 @@
+// Visual Query Builder Modal Styles for NR1
+.visual-query-builder-modal {
+  .modal-header {
+    padding: 24px 24px 16px;
+    border-bottom: 1px solid var(--color-border-neutral-subtle);
+  }
+
+  .modal-body {
+    padding: 0;
+    max-height: 70vh;
+    overflow-y: auto;
+    
+    // Import shared component styles
+    @import '~@dashbuilder/shared-components/dist/index.css';
+  }
+
+  .modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--color-border-neutral-subtle);
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+  
+  // Override some styles for NR1 compatibility
+  .nr1-visual-query-builder {
+    .query-builder {
+      background: var(--color-background-app);
+      font-family: var(--font-family);
+    }
+    
+    .builder-section {
+      background: var(--color-background-surface);
+      border: 1px solid var(--color-border-neutral-subtle);
+      
+      h3 {
+        color: var(--color-text-primary);
+      }
+    }
+    
+    .metric-search-input,
+    .groupby-input,
+    .filter-field,
+    .filter-operator,
+    .filter-value {
+      background: var(--color-background-app);
+      border-color: var(--color-border-neutral-default);
+      color: var(--color-text-primary);
+      
+      &:focus {
+        border-color: var(--color-brand-primary);
+      }
+    }
+    
+    .agg-btn,
+    .time-btn {
+      background: var(--color-background-surface);
+      border-color: var(--color-border-neutral-default);
+      color: var(--color-text-primary);
+      
+      &:hover {
+        background: var(--color-background-hover);
+      }
+      
+      &.active {
+        background: var(--color-brand-primary);
+        color: var(--color-text-on-dark);
+        border-color: var(--color-brand-primary);
+      }
+    }
+    
+    .selected-metric {
+      background: var(--color-background-info-subtle);
+      border-color: var(--color-border-info);
+      color: var(--color-text-info);
+    }
+    
+    .selected-dimension {
+      background: var(--color-background-success-subtle);
+      border-color: var(--color-border-success);
+      color: var(--color-text-success);
+    }
+    
+    .query-preview {
+      background: var(--color-background-code);
+      color: var(--color-text-primary);
+      
+      h3 {
+        color: var(--color-text-primary);
+      }
+      
+      .nrql-preview {
+        background: var(--color-background-code-dark);
+        color: var(--color-text-code);
+        font-family: var(--font-family-code);
+      }
+    }
+    
+    .run-query-btn {
+      background: var(--color-brand-primary);
+      color: var(--color-text-on-dark);
+      
+      &:hover:not(:disabled) {
+        background: var(--color-brand-primary-hover);
+      }
+      
+      &:disabled {
+        background: var(--color-background-disabled);
+        color: var(--color-text-disabled);
+      }
+    }
+    
+    .copy-query-btn {
+      background: transparent;
+      color: var(--color-text-link);
+      border-color: var(--color-text-link);
+      
+      &:hover {
+        background: var(--color-background-hover);
+      }
+    }
+    
+    .search-suggestions,
+    .groupby-suggestions {
+      background: var(--color-background-surface);
+      border-color: var(--color-border-neutral-default);
+      box-shadow: var(--shadow-popover);
+      
+      .suggestion:hover {
+        background: var(--color-background-hover);
+      }
+    }
+  }
+}

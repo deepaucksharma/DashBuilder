@@ -1,0 +1,71 @@
+receivers:
+  hostmetrics:
+    collection_interval: 30s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      filesystem:
+      load:
+      network:
+      # Enable process metrics
+      processes:
+      process:
+        # Include process names in metrics
+        include:
+          match_type: regexp
+          names:
+            - ".*"
+        metrics:
+          process.cpu.utilization:
+            enabled: true
+          process.cpu.time:
+            enabled: true
+          process.memory.usage:
+            enabled: true
+          process.memory.virtual:
+            enabled: true
+          process.disk.io:
+            enabled: true
+
+processors:
+  resource:
+    attributes:
+      - key: service.name
+        value: openstack-vm
+        action: upsert
+      - key: environment  
+        value: production
+        action: upsert
+      - key: account.id
+        value: "${NEW_RELIC_ACCOUNT_ID}"
+        action: upsert
+  
+  # Filter out processes with very low CPU usage to reduce noise
+  filter/processes:
+    metrics:
+      datapoint:
+        - 'metric.name == "process.cpu.utilization" and value_double < 0.001'
+  
+  batch:
+    timeout: 10s
+    send_batch_size: 1000
+
+exporters:
+  otlphttp:
+    endpoint: https://otlp.nr-data.net:4318
+    headers:
+      api-key: ${NEW_RELIC_LICENSE_KEY}
+    compression: gzip
+    timeout: 30s
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      processors: [resource, filter/processes, batch]
+      exporters: [otlphttp]
+  
+  telemetry:
+    logs:
+      level: info

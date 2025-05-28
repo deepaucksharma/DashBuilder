@@ -1,0 +1,244 @@
+# GitLab CI/CD Pipeline for OpenStack Deployment
+# This pipeline automates the deployment of applications to OpenStack
+
+stages:
+  - validate
+  - build
+  - test
+  - deploy
+  - cleanup
+
+variables:
+  OS_AUTH_URL: "${OS_AUTH_URL}"
+  OS_PROJECT_NAME: "${OS_PROJECT_NAME}"
+  OS_USERNAME: "${OS_USERNAME}"
+  OS_PASSWORD: "${OS_PASSWORD}"
+  OS_USER_DOMAIN_NAME: "default"
+  OS_PROJECT_DOMAIN_NAME: "default"
+  TF_VAR_instance_count: "3"
+  ANSIBLE_HOST_KEY_CHECKING: "False"
+
+# Validate infrastructure code
+validate:terraform:
+  stage: validate
+  image: hashicorp/terraform:latest
+  script:
+    - cd automation/terraform
+    - terraform init
+    - terraform validate
+    - terraform fmt -check
+  only:
+    changes:
+      - automation/terraform/**/*
+
+validate:ansible:
+  stage: validate
+  image: ansible/ansible:latest
+  script:
+    - cd automation/ansible
+    - ansible-playbook --syntax-check deploy-vms.yml
+    - ansible-lint deploy-vms.yml || true
+  only:
+    changes:
+      - automation/ansible/**/*
+
+validate:heat:
+  stage: validate
+  image: python:3.9
+  before_script:
+    - pip install python-openstackclient python-heatclient
+  script:
+    - cd automation/heat
+    - openstack stack create --dry-run -t web-app-stack.yaml test-stack
+  only:
+    changes:
+      - automation/heat/**/*
+
+# Build application
+build:app:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker build -t ${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA} .
+    - docker tag ${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA} ${CI_PROJECT_NAME}:latest
+    # Push to registry if configured
+    - |
+      if [ ! -z "$CI_REGISTRY" ]; then
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+        docker push ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}
+        docker push ${CI_REGISTRY_IMAGE}:latest
+      fi
+  artifacts:
+    reports:
+      container_scanning: gl-container-scanning-report.json
+
+# Test infrastructure
+test:infrastructure:
+  stage: test
+  image: hashicorp/terraform:latest
+  script:
+    - cd automation/terraform
+    - terraform init
+    - terraform plan -out=tfplan
+    - terraform show -json tfplan > plan.json
+  artifacts:
+    paths:
+      - automation/terraform/plan.json
+    expire_in: 1 week
+
+# Deploy to staging
+deploy:staging:
+  stage: deploy
+  image: python:3.9
+  environment:
+    name: staging
+    url: http://${STAGING_LB_IP}
+  before_script:
+    - pip install python-openstackclient ansible openstacksdk
+    - apt-get update && apt-get install -y openssh-client
+  script:
+    # Deploy using Terraform
+    - cd automation/terraform
+    - terraform init
+    - terraform apply -auto-approve -var="instance_count=2"
+    
+    # Configure instances using Ansible
+    - cd ../ansible
+    - ansible-playbook -i inventory.ini configure-vms.yml
+    
+    # Get load balancer IP
+    - export STAGING_LB_IP=$(terraform output -raw lb_ip)
+    - echo "Application deployed to http://${STAGING_LB_IP}"
+  only:
+    - develop
+  when: manual
+
+# Deploy to production
+deploy:production:
+  stage: deploy
+  image: python:3.9
+  environment:
+    name: production
+    url: http://${PROD_LB_IP}
+  before_script:
+    - pip install python-openstackclient python-heatclient
+  script:
+    # Deploy using Heat for production
+    - cd automation/heat
+    - |
+      openstack stack create \
+        --template web-app-stack.yaml \
+        --parameter key_name=prod-key \
+        --parameter image=${PROD_IMAGE} \
+        --parameter min_size=3 \
+        --parameter max_size=10 \
+        --parameter desired_capacity=5 \
+        --wait \
+        prod-stack
+    
+    # Get load balancer IP
+    - export PROD_LB_IP=$(openstack stack output show prod-stack lb_ip -f value -c output_value)
+    - echo "Application deployed to http://${PROD_LB_IP}"
+  only:
+    - main
+  when: manual
+
+# Automated testing
+test:integration:
+  stage: test
+  image: python:3.9
+  script:
+    - pip install requests pytest
+    - |
+      cat > test_deployment.py << EOF
+      import requests
+      import pytest
+      import os
+      
+      LB_IP = os.getenv('LB_IP', 'localhost')
+      
+      def test_app_responds():
+          response = requests.get(f'http://{LB_IP}', timeout=10)
+          assert response.status_code == 200
+      
+      def test_load_balancing():
+          servers = set()
+          for _ in range(10):
+              response = requests.get(f'http://{LB_IP}', timeout=10)
+              if 'Hello from' in response.text:
+                  servers.add(response.text.split('Hello from ')[1].split('<')[0])
+          assert len(servers) > 1, "Load balancing not working"
+      EOF
+    - pytest test_deployment.py -v
+  dependencies:
+    - deploy:staging
+
+# Cleanup old resources
+cleanup:old_stacks:
+  stage: cleanup
+  image: python:3.9
+  before_script:
+    - pip install python-openstackclient
+  script:
+    - |
+      # Delete stacks older than 7 days
+      for stack in $(openstack stack list -f value -c "Stack Name" -c "Creation Time"); do
+        name=$(echo $stack | awk '{print $1}')
+        created=$(echo $stack | awk '{print $2}')
+        if [[ "$name" == "test-"* ]] && [[ $(date -d "$created" +%s) -lt $(date -d "7 days ago" +%s) ]]; then
+          echo "Deleting old stack: $name"
+          openstack stack delete -y $name
+        fi
+      done
+  only:
+    - schedules
+  when: manual
+
+# Security scanning
+security:scan:
+  stage: test
+  image: python:3.9
+  script:
+    - pip install bandit safety
+    - cd automation/python
+    - bandit -r . -f json -o bandit-report.json
+    - safety check --json > safety-report.json
+  artifacts:
+    reports:
+      dependency_scanning: safety-report.json
+      sast: bandit-report.json
+
+# Performance testing
+performance:test:
+  stage: test
+  image: grafana/k6:latest
+  script:
+    - |
+      cat > load-test.js << EOF
+      import http from 'k6/http';
+      import { check } from 'k6';
+      
+      export let options = {
+        stages: [
+          { duration: '2m', target: 100 },
+          { duration: '5m', target: 100 },
+          { duration: '2m', target: 0 },
+        ],
+      };
+      
+      export default function() {
+        let response = http.get(\`http://\${__ENV.LB_IP}\`);
+        check(response, {
+          'status is 200': (r) => r.status === 200,
+          'response time < 500ms': (r) => r.timings.duration < 500,
+        });
+      }
+      EOF
+    - k6 run load-test.js
+  dependencies:
+    - deploy:staging
+  artifacts:
+    reports:
+      performance: k6-report.json

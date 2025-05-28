@@ -1,0 +1,38 @@
+NRDOT Deployment Status Summary
+==============================
+
+Current Status:
+- ✓ All 5 NRDOT collectors are running as Docker containers
+- ✓ License Key format is correct (ends with NRAL)
+- ✗ Getting 403 Permission Denied errors when sending metrics
+
+Running Containers:
+- nrdot-vm-1: Ports 4317-4318 (gRPC/HTTP)
+- nrdot-vm-2: Ports 4323-4324 (gRPC/HTTP)  
+- nrdot-vm-3: Ports 4319-4320 (gRPC/HTTP)
+- nrdot-vm-4: Ports 4325-4326 (gRPC/HTTP)
+- nrdot-vm-5: Ports 4321-4322 (gRPC/HTTP)
+
+Troubleshooting Steps:
+1. The License Key (a73002b4f9516df7b8696aea5c13681d6308NRAL) returns 200 for traces endpoint
+2. However, metrics endpoint returns 403 Permission Denied
+
+Possible Issues:
+1. License Key may not have permissions for metrics ingestion
+2. Account may need specific permissions enabled
+3. License Key might be for a different account/region
+
+Next Steps:
+1. Verify the License Key is from the correct New Relic account
+2. Check if the account has OTLP metrics ingestion enabled
+3. Try creating a new License Key specifically for NRDOT
+4. Contact New Relic support if the issue persists
+
+To check container logs:
+docker logs nrdot-vm-1
+
+To restart all containers:
+./deploy-nrdot-now.sh
+
+To check status:
+./check-nrdot-status.sh

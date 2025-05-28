@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  devstack:
+    build: .
+    container_name: devstack-container
+    hostname: devstack
+    privileged: true
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./devstack:/opt/stack/devstack
+      - devstack-data:/opt/stack/data
+    ports:
+      - "80:80"        # Horizon Dashboard
+      - "6080:6080"    # NoVNC Console
+      - "5000:5000"    # Keystone
+      - "8774:8774"    # Nova API
+      - "8776:8776"    # Cinder API
+      - "9292:9292"    # Glance API
+      - "9696:9696"    # Neutron API
+    environment:
+      - ADMIN_PASSWORD=secret
+      - DATABASE_PASSWORD=secret
+      - RABBIT_PASSWORD=secret
+      - SERVICE_PASSWORD=secret
+    command: tail -f /dev/null
+
+volumes:
+  devstack-data:
