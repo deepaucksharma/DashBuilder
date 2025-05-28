@@ -1,0 +1,187 @@
+{
+  "name": "NRDOT Metrics - Programmatic",
+  "description": "Automatically generated dashboard using schema validation",
+  "permissions": "PUBLIC_READ_WRITE",
+  "pages": [
+    {
+      "name": "System Metrics",
+      "description": "Core system performance metrics",
+      "widgets": [
+        {
+          "title": "CPU Usage by State",
+          "visualization": {
+            "id": "viz.line"
+          },
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  3630072
+                ],
+                "query": "SELECT rate(max(system.cpu.time), 1 second) FROM Metric WHERE host.id = 'dashbuilder-host' FACET state TIMESERIES SINCE 30 minutes ago"
+              }
+            ],
+            "legend": {
+              "enabled": true
+            },
+            "yAxisLeft": {
+              "zero": true
+            },
+            "facet": {
+              "showOtherSeries": false
+            }
+          }
+        },
+        {
+          "title": "Memory Usage",
+          "visualization": {
+            "id": "viz.area"
+          },
+          "layout": {
+            "column": 5,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  3630072
+                ],
+                "query": "SELECT latest(system.memory.usage) / 1e9 AS memory_gb FROM Metric WHERE host.id = 'dashbuilder-host' FACET state TIMESERIES SINCE 30 minutes ago"
+              }
+            ],
+            "legend": {
+              "enabled": true
+            },
+            "yAxisLeft": {
+              "zero": true
+            },
+            "facet": {
+              "showOtherSeries": false
+            }
+          }
+        },
+        {
+          "title": "Disk I/O",
+          "visualization": {
+            "id": "viz.line"
+          },
+          "layout": {
+            "column": 9,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  3630072
+                ],
+                "query": "SELECT rate(max(system.disk.io), 1 second) / 1e6 AS mb_per_sec FROM Metric WHERE host.id = 'dashbuilder-host' FACET device, direction TIMESERIES SINCE 30 minutes ago"
+              }
+            ],
+            "legend": {
+              "enabled": true
+            },
+            "yAxisLeft": {
+              "zero": true
+            },
+            "facet": {
+              "showOtherSeries": false
+            }
+          }
+        },
+        {
+          "title": "Network I/O",
+          "visualization": {
+            "id": "viz.line"
+          },
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 4,
+            "height": 3
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  3630072
+                ],
+                "query": "SELECT rate(max(system.network.io), 1 second) / 1e6 AS mb_per_sec FROM Metric WHERE host.id = 'dashbuilder-host' AND device != 'lo' FACET device, direction TIMESERIES SINCE 30 minutes ago"
+              }
+            ],
+            "legend": {
+              "enabled": true
+            },
+            "yAxisLeft": {
+              "zero": true
+            },
+            "facet": {
+              "showOtherSeries": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "description": "Cost and collection analytics",
+      "widgets": [
+        {
+          "title": "Metrics Collection Stats",
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  3630072
+                ],
+                "query": "SELECT uniqueCount(metricName) AS unique_metrics, count(*) AS data_points FROM Metric WHERE host.id = 'dashbuilder-host' SINCE 10 minutes ago"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Monthly Cost Estimate",
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "layout": {
+            "column": 5,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  3630072
+                ],
+                "query": "SELECT rate(count(*), 1 month) / 1e9 AS billion_per_month FROM Metric WHERE host.id = 'dashbuilder-host' SINCE 1 hour ago"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

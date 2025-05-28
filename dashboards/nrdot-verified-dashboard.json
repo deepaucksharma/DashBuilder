@@ -2,6 +2,7 @@
   "name": "NRDOT System Metrics",
   "description": "OpenTelemetry collector metrics with NRDOT optimization",
   "permissions": "PUBLIC_READ_WRITE",
+  "accountId": 3630072,
   "pages": [
     {
       "name": "System Performance",
