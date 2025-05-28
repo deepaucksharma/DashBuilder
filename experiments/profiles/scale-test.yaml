@@ -1,0 +1,233 @@
+# Scale Test Experiment
+# Tests NRDOT performance at production scale
+
+experiment:
+  id: "scale-test"
+  name: "Production Scale Test"
+  description: "Validate NRDOT optimization performance with production-level process counts and data volumes"
+  
+  metadata:
+    created_by: "nrdot-team"
+    created_at: "2024-01-01T00:00:00Z"
+    tags: ["scale", "production", "stress-test"]
+  
+  duration:
+    warmup_minutes: 10
+    test_minutes: 60
+    cooldown_minutes: 10
+  
+  containers:
+    control:
+      name: "nrdot-baseline-scale"
+      image: "dashbuilder-nrdot:latest"
+      config_profile: "baseline"
+      replicas: 3  # Multiple replicas for load distribution
+      resources:
+        limits:
+          memory: "2Gi"
+          cpu: "2000m"
+      environment:
+        NEW_RELIC_API_KEY: "${NEW_RELIC_API_KEY}"
+        NEW_RELIC_ACCOUNT_ID: "${NEW_RELIC_ACCOUNT_ID}"
+        NRDOT_MODE: "standard"
+        ENABLE_METRICS: "true"
+        # Scale settings
+        MAX_BATCH_SIZE: "10000"
+        BUFFER_SIZE: "100000"
+    
+    test_groups:
+      - name: "nrdot-balanced-scale"
+        image: "dashbuilder-nrdot:latest"
+        config_profile: "balanced"
+        replicas: 3
+        resources:
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        environment:
+          NEW_RELIC_API_KEY: "${NEW_RELIC_API_KEY}"
+          NEW_RELIC_ACCOUNT_ID: "${NEW_RELIC_ACCOUNT_ID}"
+          NRDOT_MODE: "optimized"
+          OPTIMIZATION_LEVEL: "balanced"
+          ENABLE_METRICS: "true"
+          # Optimization at scale
+          PROCESS_IMPORTANCE_THRESHOLD: "0.8"
+          MAX_PROCESSES_PER_HOST: "50"
+          ENABLE_SMART_SAMPLING: "true"
+          CARDINALITY_LIMIT: "10000"
+  
+  metrics:
+    collection_interval_seconds: 120  # Less frequent for long test
+    
+    primary_metrics:
+      - name: "total_processes"
+        query: "SELECT uniqueCount(processDisplayName) FROM ProcessSample WHERE nrdot.enabled = 'true' SINCE 5 minutes ago"
+        unit: "count"
+      
+      - name: "events_per_minute"
+        query: "SELECT rate(count(*), 1 minute) FROM ProcessSample WHERE nrdot.enabled = 'true' SINCE 5 minutes ago"
+        unit: "events/min"
+      
+      - name: "total_data_gb"
+        query: "SELECT sum(nrdot.bytes.sent) / 1073741824 FROM Metric WHERE service.name LIKE 'nrdot%' SINCE 5 minutes ago"
+        unit: "gigabytes"
+      
+      - name: "estimated_monthly_cost"
+        query: "SELECT latest(nrdot.cost.estimate.monthly) FROM Metric WHERE service.name LIKE 'nrdot%'"
+        unit: "usd"
+      
+      - name: "cardinality"
+        query: "SELECT uniqueCount(processDisplayName, hostname) FROM ProcessSample WHERE nrdot.enabled = 'true' SINCE 5 minutes ago"
+        unit: "unique_combinations"
+    
+    secondary_metrics:
+      - name: "queue_depth"
+        query: "SELECT average(otelcol_processor_queued_retry_queue_length) FROM Metric WHERE service.name LIKE 'nrdot%' SINCE 5 minutes ago"
+      
+      - name: "export_errors"
+        query: "SELECT sum(otelcol_exporter_send_failed_metric_points) FROM Metric WHERE service.name LIKE 'nrdot%' SINCE 5 minutes ago"
+      
+      - name: "memory_pressure"
+        query: "SELECT max(container.memory.usage) / max(container.memory.limit) * 100 FROM ContainerSample WHERE containerName LIKE 'nrdot%' SINCE 5 minutes ago"
+  
+  success_criteria:
+    requirements:
+      - metric: "total_processes"
+        operator: ">="
+        threshold: 500
+        description: "Must handle at least 500 unique processes"
+      
+      - metric: "events_per_minute"
+        operator: ">="
+        threshold: 100000
+        description: "Must process at least 100k events/minute"
+      
+      - metric: "export_errors"
+        operator: "<"
+        threshold: 100
+        description: "Export errors must be minimal"
+    
+    goals:
+      - metric: "total_data_gb"
+        operator: "<"
+        baseline_percentage: 50
+        description: "Achieve 50% data reduction at scale"
+      
+      - metric: "estimated_monthly_cost"
+        operator: "<"
+        baseline_percentage: 60
+        description: "Achieve 40% cost reduction at scale"
+      
+      - metric: "cardinality"
+        operator: "<"
+        baseline_percentage: 70
+        description: "Reduce cardinality by 30%"
+  
+  workload:
+    enabled: true
+    type: "production_simulation"
+    
+    # Simulate production environment
+    production_simulation:
+      hosts: 50
+      processes_per_host:
+        min: 20
+        max: 100
+        distribution: "normal"
+      
+      # Process types distribution
+      process_types:
+        - type: "web_server"
+          percentage: 15
+          importance: 0.95
+          pattern: "nginx|apache|httpd"
+        
+        - type: "application"
+          percentage: 25
+          importance: 0.9
+          pattern: "java|python|node|ruby"
+        
+        - type: "database"
+          percentage: 10
+          importance: 1.0
+          pattern: "postgres|mysql|mongo|redis"
+        
+        - type: "system"
+          percentage: 30
+          importance: 0.5
+          pattern: "systemd|cron|sshd"
+        
+        - type: "monitoring"
+          percentage: 20
+          importance: 0.7
+          pattern: "prometheus|grafana|telegraf"
+      
+      # Load patterns
+      load_patterns:
+        - name: "business_hours"
+          start_hour: 8
+          end_hour: 18
+          multiplier: 2.0
+        
+        - name: "peak_load"
+          start_hour: 12
+          end_hour: 14
+          multiplier: 3.0
+        
+        - name: "maintenance"
+          start_hour: 2
+          end_hour: 4
+          multiplier: 0.5
+  
+  comparison:
+    baseline: "control"
+    dimensions:
+      - name: "scale_efficiency"
+        metrics: ["total_data_gb", "events_per_minute"]
+        calculation: "ratio"
+      
+      - name: "cost_at_scale"
+        primary_metric: "estimated_monthly_cost"
+        calculation: "percentage_change"
+      
+      - name: "coverage_at_scale"
+        primary_metric: "total_processes"
+        calculation: "absolute_difference"
+      
+      - name: "cardinality_reduction"
+        primary_metric: "cardinality"
+        calculation: "percentage_change"
+  
+  output:
+    storage:
+      type: "local"
+      path: "./experiment-results/${experiment.id}"
+    
+    reports:
+      - type: "scale_analysis"
+        format: "pdf"
+        sections:
+          - executive_summary
+          - scale_metrics
+          - cost_projection
+          - recommendations
+      
+      - type: "detailed"
+        format: "json"
+        include_raw_data: false  # Too much data for scale test
+        include_aggregates: true
+      
+      - type: "dashboard"
+        format: "new_relic_dashboard"
+        dashboard_name: "NRDOT Scale Test - ${experiment.id}"
+        
+    # Special handling for scale test
+    notifications:
+      - type: "webhook"
+        url: "${NOTIFICATION_WEBHOOK_URL}"
+        events: ["start", "complete", "error"]
+      
+      - type: "email"
+        to: "${NOTIFICATION_EMAIL}"
+        on_complete: true
+        include_summary: true

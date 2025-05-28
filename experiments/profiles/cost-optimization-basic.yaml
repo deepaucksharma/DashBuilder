@@ -1,0 +1,169 @@
+# Basic Cost Optimization Experiment
+# Tests conservative vs aggressive filtering strategies
+
+experiment:
+  id: "cost-opt-basic"
+  name: "Basic Cost Optimization Test"
+  description: "Compare standard NRDOT with conservative and aggressive optimization profiles to find optimal cost/coverage balance"
+  
+  metadata:
+    created_by: "nrdot-team"
+    created_at: "2024-01-01T00:00:00Z"
+    tags: ["cost-optimization", "quick-test", "basic"]
+  
+  duration:
+    warmup_minutes: 2
+    test_minutes: 10
+    cooldown_minutes: 2
+  
+  containers:
+    control:
+      name: "nrdot-baseline"
+      image: "dashbuilder-nrdot:latest"
+      config_profile: "baseline"
+      replicas: 1
+      environment:
+        NEW_RELIC_API_KEY: "${NEW_RELIC_API_KEY}"
+        NEW_RELIC_ACCOUNT_ID: "${NEW_RELIC_ACCOUNT_ID}"
+        NRDOT_MODE: "standard"
+        ENABLE_METRICS: "true"
+        METRICS_PORT: "8889"
+    
+    test_groups:
+      - name: "nrdot-conservative"
+        image: "dashbuilder-nrdot:latest"
+        config_profile: "conservative"
+        replicas: 1
+        environment:
+          NEW_RELIC_API_KEY: "${NEW_RELIC_API_KEY}"
+          NEW_RELIC_ACCOUNT_ID: "${NEW_RELIC_ACCOUNT_ID}"
+          NRDOT_MODE: "optimized"
+          OPTIMIZATION_LEVEL: "conservative"
+          ENABLE_METRICS: "true"
+          METRICS_PORT: "8890"
+          # Conservative settings
+          PROCESS_IMPORTANCE_THRESHOLD: "0.7"
+          MAX_PROCESSES_PER_HOST: "75"
+          SAMPLING_REDUCTION_FACTOR: "0.8"
+      
+      - name: "nrdot-aggressive"
+        image: "dashbuilder-nrdot:latest"
+        config_profile: "aggressive"
+        replicas: 1
+        environment:
+          NEW_RELIC_API_KEY: "${NEW_RELIC_API_KEY}"
+          NEW_RELIC_ACCOUNT_ID: "${NEW_RELIC_ACCOUNT_ID}"
+          NRDOT_MODE: "optimized"
+          OPTIMIZATION_LEVEL: "aggressive"
+          ENABLE_METRICS: "true"
+          METRICS_PORT: "8891"
+          # Aggressive settings
+          PROCESS_IMPORTANCE_THRESHOLD: "0.9"
+          MAX_PROCESSES_PER_HOST: "30"
+          SAMPLING_REDUCTION_FACTOR: "0.5"
+  
+  metrics:
+    collection_interval_seconds: 30
+    
+    primary_metrics:
+      - name: "telemetry_bytes"
+        query: "SELECT sum(nrdot.telemetry.bytes) FROM Metric WHERE service.name LIKE 'nrdot%' SINCE 1 minute ago"
+        unit: "bytes"
+      
+      - name: "process_count"
+        query: "SELECT uniqueCount(processDisplayName) FROM ProcessSample WHERE nrdot.enabled = 'true' SINCE 1 minute ago"
+        unit: "count"
+      
+      - name: "estimated_monthly_cost"
+        query: "SELECT latest(nrdot.cost.estimate.monthly) FROM Metric WHERE service.name LIKE 'nrdot%'"
+        unit: "usd"
+      
+      - name: "cpu_usage"
+        query: "SELECT average(host.cpuPercent) FROM ProcessSample WHERE processDisplayName LIKE 'nrdot%' SINCE 1 minute ago"
+        unit: "percent"
+    
+    secondary_metrics:
+      - name: "filtered_processes"
+        query: "SELECT count(*) FROM Log WHERE message LIKE '%filtered out%' AND service.name LIKE 'nrdot%' SINCE 1 minute ago"
+      
+      - name: "critical_process_coverage"
+        query: "SELECT uniqueCount(processDisplayName) FROM ProcessSample WHERE nrdot.process.importance >= 0.9 SINCE 1 minute ago"
+  
+  success_criteria:
+    requirements:
+      - metric: "process_count"
+        operator: ">="
+        threshold: 20
+        description: "Must monitor at least 20 unique processes"
+      
+      - metric: "critical_process_coverage"
+        operator: ">="
+        threshold: 10
+        description: "Must maintain coverage of critical processes"
+    
+    goals:
+      - metric: "telemetry_bytes"
+        operator: "<"
+        baseline_percentage: 60
+        description: "Target 40% reduction in telemetry volume"
+      
+      - metric: "estimated_monthly_cost"
+        operator: "<"
+        baseline_percentage: 70
+        description: "Target 30% cost reduction"
+  
+  workload:
+    enabled: true
+    type: "synthetic"
+    
+    processes:
+      total_count: 50
+      distribution:
+        critical: 10
+        important: 15
+        standard: 25
+      
+      activity_patterns:
+        - name: "steady"
+          percentage: 50
+          cpu_range: [5, 20]
+          memory_range: [100, 300]
+        
+        - name: "variable"
+          percentage: 30
+          cpu_range: [10, 60]
+          memory_range: [200, 1000]
+        
+        - name: "idle"
+          percentage: 20
+          cpu_range: [0, 5]
+          memory_range: [50, 100]
+  
+  comparison:
+    baseline: "control"
+    dimensions:
+      - name: "cost_savings"
+        primary_metric: "estimated_monthly_cost"
+        calculation: "percentage_change"
+      
+      - name: "data_reduction"
+        primary_metric: "telemetry_bytes"
+        calculation: "percentage_change"
+      
+      - name: "process_coverage"
+        primary_metric: "process_count"
+        calculation: "absolute_difference"
+  
+  output:
+    storage:
+      type: "local"
+      path: "./experiment-results/${experiment.id}"
+    
+    reports:
+      - type: "summary"
+        format: "markdown"
+        include_charts: true
+      
+      - type: "detailed"
+        format: "json"
+        include_raw_data: false

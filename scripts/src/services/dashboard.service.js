@@ -207,10 +207,22 @@ export class DashboardService {
       suggestions: {}
     };
 
+    // Collect all widgets for parallel validation
+    const allWidgets = [];
     for (const page of dashboard.pages) {
       for (const widget of page.widgets) {
         results.totalWidgets++;
-        
+        allWidgets.push({ page, widget });
+      }
+    }
+
+    // Process widgets in batches for parallel validation
+    const batchSize = 10;
+    for (let i = 0; i < allWidgets.length; i += batchSize) {
+      const batch = allWidgets.slice(i, i + batchSize);
+      
+      // Create validation promises for the batch
+      const batchPromises = batch.map(async ({ page, widget }) => {
         const widgetResult = {
           page: page.name,
           widget: widget.title,
@@ -227,15 +239,11 @@ export class DashboardService {
             if (!validation.valid) {
               widgetResult.valid = false;
               widgetResult.errors.push(validation.error);
-              results.invalidWidgets++;
-              results.allValid = false;
 
               if (options.includeSuggestions && validation.suggestions?.length > 0) {
-                results.suggestions[widget.title] = validation.suggestions;
+                widgetResult.suggestions = validation.suggestions;
               }
             } else {
-              results.validWidgets++;
-              
               // Check for warnings
               if (validation.warnings?.length > 0) {
                 widgetResult.warnings = validation.warnings;
@@ -244,11 +252,7 @@ export class DashboardService {
           } catch (error) {
             widgetResult.valid = false;
             widgetResult.errors.push(`Query validation error: ${error.message}`);
-            results.invalidWidgets++;
-            results.allValid = false;
           }
-        } else {
-          results.validWidgets++;
         }
 
         // Check visualization compatibility
@@ -256,8 +260,28 @@ export class DashboardService {
           widgetResult.warnings.push(`Unknown visualization type: ${widget.visualization.id}`);
         }
 
+        return widgetResult;
+      });
+
+      // Wait for batch to complete
+      const batchResults = await Promise.all(batchPromises);
+      
+      // Process batch results
+      batchResults.forEach(widgetResult => {
+        if (widgetResult.valid) {
+          results.validWidgets++;
+        } else {
+          results.invalidWidgets++;
+          results.allValid = false;
+        }
+        
+        if (widgetResult.suggestions) {
+          results.suggestions[widgetResult.widget] = widgetResult.suggestions;
+          delete widgetResult.suggestions;
+        }
+        
         results.widgets.push(widgetResult);
-      }
+      });
     }
 
     results.invalidCount = results.invalidWidgets;

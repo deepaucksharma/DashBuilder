@@ -296,13 +296,40 @@ class DashBuilderMonitor {
         f.includes(new Date().toISOString().split('T')[0])
       );
 
-      // Count API calls from logs
-      for (const logFile of todayLogs) {
-        const content = await fs.readFile(path.join(logsDir, logFile), 'utf8');
-        const apiCalls = (content.match(/API call/gi) || []).length;
-        this.metrics.apiCalls += apiCalls;
+      // Track last processed position for each log file
+      if (!this.logPositions) {
+        this.logPositions = {};
       }
 
+      // Count API calls from logs (only new entries since last check)
+      let newApiCalls = 0;
+      for (const logFile of todayLogs) {
+        const filePath = path.join(logsDir, logFile);
+        const stats = await fs.stat(filePath);
+        const lastPosition = this.logPositions[logFile] || 0;
+        
+        // Only read new content since last check
+        if (stats.size > lastPosition) {
+          const stream = require('fs').createReadStream(filePath, {
+            start: lastPosition,
+            encoding: 'utf8'
+          });
+          
+          let newContent = '';
+          for await (const chunk of stream) {
+            newContent += chunk;
+          }
+          
+          const apiCalls = (newContent.match(/API call/gi) || []).length;
+          newApiCalls += apiCalls;
+          
+          // Update position for next check
+          this.logPositions[logFile] = stats.size;
+        }
+      }
+
+      // Update metrics with only new API calls
+      this.metrics.apiCalls += newApiCalls;
       this.metrics.lastCheck = new Date().toISOString();
       
     } catch (error) {
@@ -339,6 +366,13 @@ class DashBuilderMonitor {
     if (this.monitoringConfig.alerts.email) {
       await this.sendEmailReport(report);
     }
+
+    // Reset daily metrics after report generation
+    this.metrics.apiCalls = 0;
+    this.metrics.dashboardsCreated = 0;
+    this.metrics.dashboardsUpdated = 0;
+    this.logPositions = {}; // Reset log positions for new day
+    logger.info('Daily metrics reset for new reporting period');
   }
 
   async sendAlert(title, issues) {

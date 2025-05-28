@@ -1,87 +1,61 @@
-# Use Node.js LTS as base image
-FROM node:18-alpine
+# Multi-stage Dockerfile for DashBuilder with NRDOT v2 integration
 
-# Install additional dependencies
-RUN apk add --no-cache \
-    bash \
-    git \
-    curl \
-    python3 \
-    make \
-    g++
-
-# Set working directory
+# Base stage with common dependencies
+FROM node:18-alpine AS base
+RUN apk add --no-cache bash git curl python3 make g++ ca-certificates
 WORKDIR /app
 
-# Copy package files for main project
+# Dependencies stage
+FROM base AS deps
 COPY package*.json ./
-
-# Install main project dependencies
-RUN npm install --legacy-peer-deps
-
-# Copy and install scripts dependencies
 COPY scripts/package*.json ./scripts/
-WORKDIR /app/scripts
-RUN npm install --legacy-peer-deps
+COPY nrdot-nr1-app/package*.json ./nrdot-nr1-app/
+RUN npm ci --legacy-peer-deps && \
+    cd scripts && npm ci --legacy-peer-deps && \
+    cd ../nrdot-nr1-app && npm ci --legacy-peer-deps
 
-# Go back to main directory
-WORKDIR /app
+# OTEL Collector stage
+FROM otel/opentelemetry-collector-contrib:0.91.0 AS otel-collector
 
-# Copy all project files except automation
-COPY .gitignore ./
-COPY CLAUDE.md ./
-COPY README.md ./
-COPY NRDOT-V2-IMPLEMENTATION-SUMMARY.md ./
-COPY deployment.yaml ./
-COPY setup.sh ./
-COPY configs ./configs
-COPY distributions ./distributions
-COPY docs ./docs
-COPY examples ./examples
-COPY nrdot-nr1-app ./nrdot-nr1-app
-COPY orchestrator ./orchestrator
-COPY pkg ./pkg
-COPY scripts ./scripts
+# Development stage
+FROM base AS development
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/scripts/node_modules ./scripts/node_modules
+COPY --from=deps /app/nrdot-nr1-app/node_modules ./nrdot-nr1-app/node_modules
+COPY . .
+RUN find . -name "*.sh" -type f -exec chmod +x {} \;
+ENV NODE_ENV=development
+CMD ["npm", "run", "dev"]
 
-# Install dependencies in scripts workspace
-WORKDIR /app/scripts
-RUN npm install --legacy-peer-deps
+# Production build stage
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/scripts/node_modules ./scripts/node_modules
+COPY --from=deps /app/nrdot-nr1-app/node_modules ./nrdot-nr1-app/node_modules
+COPY . .
+RUN npm run build --if-present && \
+    cd nrdot-nr1-app && npm run build --if-present
 
-# Back to app root
-WORKDIR /app
-
-# Make scripts executable
-RUN chmod +x setup.sh && \
-    find scripts -name "*.sh" -type f -exec chmod +x {} \;
-# Create startup script
-RUN echo '#!/bin/bash' > /app/start.sh && \
-    echo 'echo "===================================="' >> /app/start.sh && \
-    echo 'echo " DashBuilder Container Started"' >> /app/start.sh && \
-    echo 'echo "===================================="' >> /app/start.sh && \
-    echo 'echo ""' >> /app/start.sh && \
-    echo 'echo "Available commands:"' >> /app/start.sh && \
-    echo 'echo "  npm run validate:all    - Test New Relic connection"' >> /app/start.sh && \
-    echo 'echo "  npm run deploy          - Deploy dashboards"' >> /app/start.sh && \
-    echo 'echo "  npm run deploy:nrdot    - Deploy NRDOT"' >> /app/start.sh && \
-    echo 'echo "  npm run cli -- [cmd]    - Run CLI commands"' >> /app/start.sh && \
-    echo 'echo ""' >> /app/start.sh && \
-    echo 'echo "Examples:"' >> /app/start.sh && \
-    echo 'echo "  npm run cli -- dashboard list"' >> /app/start.sh && \
-    echo 'echo "  npm run cli -- dashboard create ./examples/sample-dashboard.json"' >> /app/start.sh && \
-    echo 'echo ""' >> /app/start.sh && \
-    echo 'exec "$@"' >> /app/start.sh && \
-    chmod +x /app/start.sh
-
-# Set environment variables
+# Production stage
+FROM base AS production
+RUN apk add --no-cache tini
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/scripts/node_modules ./scripts/node_modules
+COPY --from=builder /app/nrdot-nr1-app/node_modules ./nrdot-nr1-app/node_modules
+COPY --from=builder /app .
+RUN find . -name "*.sh" -type f -exec chmod +x {} \;
 ENV NODE_ENV=production
-ENV NR_GUARDIAN_LOG_LEVEL=info
+EXPOSE 3000
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "orchestrator/monitor-enhanced.js"]
 
-# Copy entrypoint script
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
-
-# Set entrypoint with comprehensive logging
-ENTRYPOINT ["/docker-entrypoint.sh"]
-
-# Default command - keep container running
-CMD []
+# NRDOT stage with OTEL collector
+FROM alpine:3.19 AS nrdot
+RUN apk add --no-cache bash curl jq bc procps nodejs npm
+COPY --from=otel-collector /otelcol-contrib /usr/local/bin/otelcol-contrib
+COPY --from=production /app/configs/collector-profiles /etc/otel/profiles
+COPY --from=production /app/scripts/control-loop.sh /usr/local/bin/
+COPY --from=production /app/nrdot-config /etc/nrdot
+RUN chmod +x /usr/local/bin/control-loop.sh
+ENV OTEL_RESOURCE_ATTRIBUTES="service.name=nrdot-collector,service.version=2.0"
+CMD ["/usr/local/bin/otelcol-contrib", "--config=/etc/otel/profiles/balanced.yaml"]

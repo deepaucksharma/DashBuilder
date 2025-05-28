@@ -1,267 +1,271 @@
-# DashBuilder with NRDOT v2 Process Optimization
+# DashBuilder + NRDOT v2: Integrated Telemetry Solution
 
-A comprehensive platform for New Relic dashboard management with integrated NRDOT v2 process optimization, delivering 70-85% telemetry cost reduction while maintaining 95%+ critical process coverage.
-
-## 🚀 Quick Start
+## 🚀 One-Command Setup
 
 ```bash
-# Clone and setup
-git clone https://github.com/deepaucksharma/DashBuilder.git
-cd DashBuilder
-./setup.sh
-
-# Quick start with consolidated architecture
-./quick-start.sh
-
-# Or deploy directly with Docker Compose profiles
-docker compose --profile full up -d
+./master-setup.sh
 ```
 
-## 🔄 Consolidated Architecture
+That's it! This single command will:
+1. Check prerequisites (Docker, Node.js, etc.)
+2. Configure your New Relic credentials
+3. Build and start all services
+4. Create monitoring dashboards
+5. Validate the entire setup
 
-This project has been consolidated to improve maintainability and reduce duplication. Key improvements:
+## 🎯 What You Get
 
-- **Single Docker Compose** with profiles for different deployment scenarios
-- **Multi-stage Dockerfile** with targets for different components
-- **Unified scripts** with consistent interfaces and shared utilities
-- **Modular configuration** with base config and profile overlays
+### NRDOT v2 Features
+- **70-85% telemetry cost reduction** through intelligent process filtering
+- **Real-time optimization** with automatic profile switching
+- **Zero data loss** for critical processes
+- **A/B testing framework** for safe rollouts
 
-For details on the consolidated structure, see:
-- [CONSOLIDATED_STRUCTURE.md](CONSOLIDATED_STRUCTURE.md) - Overview of consolidated structure
-- [CONSOLIDATION.md](CONSOLIDATION.md) - Documentation of consolidation process
-- [FILE_CONSOLIDATION_MAP.md](FILE_CONSOLIDATION_MAP.md) - Mapping between original and consolidated files
+### DashBuilder Features
+- **Automated dashboard creation** for New Relic
+- **Visual dashboard management** interface
+- **API-driven operations** for automation
+- **Integrated monitoring** with Prometheus/Grafana
 
-## 🚀 Key Features
+### Integration Benefits
+- **Seamless data flow** from NRDOT to New Relic
+- **Unified configuration** management
+- **Single-pane monitoring** for both systems
+- **Automatic dashboard creation** for NRDOT metrics
 
-- **Dashboard Management**: Validate, optimize, and manage New Relic dashboards
-- **NRDOT v2 Integration**: Process metrics optimization with intelligent filtering
-- **Cost Reduction**: 70-85% reduction in telemetry costs
-- **Process Coverage**: Maintains 95%+ coverage of critical processes
-- **CLI Tools**: Comprehensive command-line interface (nr-guardian)
-- **Docker & Native**: Deploy with Docker Compose or systemd services
-- **Auto-Validation**: Comprehensive validation with automatic fixes
-
-## 📁 Streamlined Structure
+## 🏗️ Architecture
 
 ```
-DashBuilder/
-├── setup.sh                     # 🎯 Main setup script (start here)
-├── docker-compose.yml           # 🐳 Unified Docker deployment
-├── scripts/                     # 🛠️ Organized operational scripts
-│   ├── deployment/              #   📦 Deploy NRDOT (Docker/Native/K8s)
-│   ├── validation/              #   ✅ Validate & test everything
-│   ├── monitoring/              #   📊 Health checks & diagnostics
-│   ├── utils/                   #   🔧 Utilities & helpers
-│   ├── src/                     #   💻 CLI tool (nr-guardian)
-│   └── INDEX.md                 #   📋 Complete scripts reference
-├── distributions/nrdot-plus/    # 📦 NRDOT deployment package
-├── automation/                  # 🤖 Browser automation workflows
-├── orchestrator/                # 🎛️ Workflow orchestration
-├── nrdot-nr1-app/              # 📱 New Relic One application
-├── docs/                       # 📚 Comprehensive documentation
-└── archive/                    # 🗄️ Historical files
+┌─────────────────────────────────────────────────────────────┐
+│                     Your Infrastructure                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────┐      ┌─────────────┐     ┌─────────────┐ │
+│  │   Servers   │─────▶│    NRDOT    │────▶│ New Relic  │ │
+│  │  Processes  │      │  Collector  │     │    OTLP    │ │
+│  └─────────────┘      └─────────────┘     └─────────────┘ │
+│                              │                      │       │
+│                              ▼                      ▼       │
+│                      ┌─────────────┐       ┌─────────────┐ │
+│                      │Control Loop │       │ Dashboards │ │
+│                      │(Optimizer)  │       │   (Auto)   │ │
+│                      └─────────────┘       └─────────────┘ │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## 🔧 Essential Commands
+## 📊 How It Works
 
-### Quick Operations
+### 1. Process Collection
+- NRDOT collector gathers all process metrics
+- Applies intelligent filtering based on importance
+- Reduces data volume while maintaining visibility
+
+### 2. Optimization
+- Control loop monitors cost and coverage
+- Automatically adjusts filtering profiles
+- Maintains SLA targets (>95% critical coverage)
+
+### 3. Dashboard Creation
+- DashBuilder detects NRDOT metrics
+- Automatically creates monitoring dashboards
+- Updates visualizations in real-time
+
+### 4. Monitoring
+- Prometheus collects internal metrics
+- Grafana provides local visualization
+- New Relic shows production metrics
+
+## 🛠️ Service Management
+
+All services are managed through Docker Compose:
+
+| Service | Port | Purpose |
+|---------|------|---------|  
+| dashbuilder | 3000 | Dashboard UI |
+| otel-collector | 4317/8888 | NRDOT metrics collection |
+| control-loop | - | Optimization engine |
+| redis | 6379 | Cache & state storage |
+| postgres | 5432 | Configuration database |
+
+## 🔧 Quick Start Commands
+
 ```bash
-# Deploy NRDOT with different options
-./scripts/deployment/deploy-nrdot.sh --mode=docker --profile=balanced
-./scripts/deployment/deploy-nrdot.sh --mode=native --day=2 --profile=aggressive
+# View system status
+./status.sh
 
-# Validate deployment
-./scripts/validation/validate-nrdot.sh              # Full validation
-./scripts/validation/validate-nrdot.sh quick       # Essential checks
-./scripts/validation/validate-nrdot.sh metrics     # Just metrics
+# Restart all services
+./restart.sh
+
+# Open all dashboards
+./open-dashboards.sh
+
+# Run validation checks
+./validate-integration.sh
+
+# View logs
+docker-compose logs -f
 ```
 
-### CLI Tool (nr-guardian)
+## ⚙️ Configuration
+
+### Environment Variables (.env)
 ```bash
-# Dashboard operations
-npm run cli -- dashboard list                       # List all dashboards
-npm run cli -- dashboard export <guid>              # Export dashboard
-npm run cli -- dashboard validate-widgets <guid>    # Validate queries
+# New Relic Credentials (Required)
+NEW_RELIC_LICENSE_KEY=your_license_key_here
+NEW_RELIC_ACCOUNT_ID=your_account_id_here
+NEW_RELIC_API_KEY=your_api_key_here
+NEW_RELIC_REGION=US  # or EU
 
-# NRQL operations
-npm run cli -- nrql validate "SELECT count(*) FROM ProcessSample"
-npm run cli -- nrql optimize "SELECT * FROM Metric"
+# NRDOT Configuration
+NRDOT_PROFILE=balanced  # conservative, balanced, aggressive
+NRDOT_CONTROL_LOOP_INTERVAL=60
+NRDOT_EXPERIMENT_ENABLED=false
 
-# Schema operations  
-npm run cli -- schema discover-event-types
-npm run cli -- schema describe-event-type ProcessSample
-
-# Data analysis
-npm run cli -- ingest get-data-volume --days 7
-npm run cli -- ingest get-cardinality ProcessSample processName
+# Optional Configuration
+NODE_ENV=production
+LOG_LEVEL=info
 ```
 
-### Docker Profiles
+### NRDOT Profiles
+
+| Profile | Cost Reduction | Coverage | Use Case |
+|---------|----------------|----------|----------|
+| **Conservative** | ~50% | >99% | Maximum visibility |
+| **Balanced** | ~70% | >95% | Recommended default |
+| **Aggressive** | ~85% | >90% | Maximum savings |
+
+## 🧪 Running Experiments
+
+### Quick 5-minute Test
 ```bash
-# Different deployment options
-docker-compose --profile dashbuilder up       # Just DashBuilder
-docker-compose --profile nrdot up             # NRDOT system  
-docker-compose --profile full up              # Everything + monitoring
-docker-compose --profile experiments up       # A/B testing
+npm run experiment:quick
 ```
 
-## 📋 Installation Requirements
-
-- **Node.js 18+** and npm
-- **Docker & Docker Compose** (for Docker deployment)
-- **New Relic account** with API access
-- **Linux/MacOS/WSL** environment
-- **Git**
-
-## 🛠️ Configuration
-
-### Environment Setup
-Create `.env` file (or copy from `.env.example`):
-
-```env
-# Required
-NEW_RELIC_API_KEY=your-user-api-key
-NEW_RELIC_ACCOUNT_ID=your-account-id
-
-# Optional
-NEW_RELIC_LICENSE_KEY=your-license-key
-NEW_RELIC_REGION=US
-NRDOT_PROFILE=balanced
-NRDOT_TARGET_COVERAGE=95
-NRDOT_COST_REDUCTION_TARGET=70
+### Full Profile Comparison
+```bash
+npm run experiment:all
 ```
 
-### NRDOT Optimization Profiles
-- **Conservative**: 30-40% cost reduction, 99% coverage
-- **Balanced**: 60-70% cost reduction, 95% coverage _(recommended)_
-- **Aggressive**: 75-85% cost reduction, 90% coverage
-
-## 📊 NRDOT v2 Architecture
-
-### Deployment Modes
-- **Docker**: Container-based deployment with Docker Compose
-- **Native**: Systemd services on Linux servers
-- **Kubernetes**: Scalable cluster deployment
-- **Hybrid**: Mix of Docker and native components
-
-### Key Components
-- **OpenTelemetry Collector**: Central metrics processing
-- **Control Loop**: Automatic profile switching
-- **Process Classification**: Smart categorization system
-- **Cost Calculator**: Real-time cost estimation
-- **Validation Engine**: Comprehensive health monitoring
-
-### Data Flow
+### View Results
+```bash
+npm run experiment:results
 ```
-Processes → OTEL Collector → NRDOT Processor → New Relic
-                ↓
-          Control Loop ← Cost/Coverage Analysis
+
+## 📈 Monitoring Your Setup
+
+### 1. Local Dashboards
+- **Dashboard UI**: http://localhost:3000
+- **Prometheus**: http://localhost:9090
+- **Grafana**: http://localhost:3001
+
+### 2. NRDOT Metrics
+```bash
+# Check optimization metrics
+curl http://localhost:8888/metrics | grep nrdot_
+
+# Key metrics to monitor:
+# - nrdot_process_series_total: Total process count
+# - nrdot_process_series_kept: Processes after filtering
+# - nrdot_process_coverage_critical: Critical coverage %
+# - nrdot_cost_estimated_hr: Estimated hourly cost
+```
+
+### 3. New Relic Dashboards
+The system automatically creates:
+- NRDOT Performance Dashboard
+- Process Optimization Dashboard
+- Cost Analysis Dashboard
+
+## 🛠️ Common Operations
+
+### Check Status
+```bash
+./status.sh
+```
+
+### Restart Services
+```bash
+./restart.sh
+```
+
+### Change Optimization Profile
+```bash
+# Edit .env file
+NRDOT_PROFILE=aggressive
+
+# Restart services
+docker-compose restart
+```
+
+### View Logs
+```bash
+# All services
+docker-compose logs -f
+
+# Specific service
+docker-compose logs -f otel-collector
+```
+
+### Run Validation
+```bash
+./validate-integration.sh
 ```
 
 ## 🚨 Troubleshooting
 
-### Quick Diagnostics
-```bash
-# Run comprehensive validation
-./scripts/validation/validate-nrdot.sh --verbose
+### No Data in New Relic?
+1. Check collector is running: `docker-compose ps otel-collector`
+2. Verify credentials: `grep LICENSE .env`
+3. Check logs: `docker-compose logs otel-collector`
 
-# Check specific components
-./scripts/validation/validate-nrdot.sh services
-./scripts/validation/validate-nrdot.sh metrics
-./scripts/validation/validate-nrdot.sh queries
+### High Memory Usage?
+1. Switch to aggressive profile
+2. Increase memory limits in docker-compose.yml
+3. Check for process explosion
 
-# Health check
-./scripts/monitoring/health-check-comprehensive.sh
+### Dashboard Not Loading?
+1. Ensure all services are running: `./status.sh`
+2. Check API connectivity: `curl http://localhost:8080/health`
+3. Verify database: `docker-compose logs postgres`
+
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed solutions.
+
+## 📚 Advanced Topics
+
+### Custom Process Classification
+Edit `configs/optimization.yaml`:
+```yaml
+process_classification:
+  custom_critical:
+    score: 0.95
+    patterns:
+      common:
+        - "^my-critical-app$"
 ```
 
-### Common Issues
-
-1. **Deployment Failed**
-   ```bash
-   # Check prerequisites and retry
-   ./scripts/deployment/deploy-nrdot.sh --mode=docker --dry-run
-   ```
-
-2. **No Metrics in New Relic**
-   ```bash
-   # Validate metrics pipeline
-   ./scripts/validation/validate-nrdot.sh metrics --verbose
-   ```
-
-3. **API Connection Issues**
-   ```bash
-   # Test API connectivity
-   npm run cli -- schema discover-event-types --limit 1
-   ```
-
-4. **Docker Issues**
-   ```bash
-   # Check containers
-   docker-compose ps
-   docker-compose logs nrdot-complete
-   ```
-
-## 📚 Documentation
-
-### Getting Started
-- [Scripts Index](scripts/INDEX.md) - Complete scripts reference
-- [Docker Guide](docker/README.md) - Docker deployment guide
-- [Configuration Guide](docs/02-configuration.md) - Detailed setup
-
-### Advanced Topics
-- [Control Loop](docs/03-control-loop.md) - Automatic optimization
-- [Cross-Platform](docs/04-cross-platform.md) - Multi-platform deployment
-- [Monitoring](docs/05-monitoring.md) - Observability setup
-- [API Reference](docs/api-reference.md) - Complete API documentation
-
-### Operations
-- [Deployment Guide](docs/06-deployment.md) - Production deployment
-- [Troubleshooting](docs/troubleshooting.md) - Common issues
-- [Validation Guide](docs/07-validation.md) - Testing procedures
-
-## 🛠️ Development
-
-### Adding New Features
-1. Check [Scripts Index](scripts/INDEX.md) for existing functionality
-2. Use organized script structure in `scripts/` subdirectories
-3. Add validation tests to `scripts/validation/`
-4. Update documentation
-
-### Testing
+### A/B Testing
+Enable experiments in `.env`:
 ```bash
-# Run all validations
-./scripts/validation/validate-nrdot.sh all
-
-# Test specific components
-cd scripts && npm test
+NRDOT_EXPERIMENT_ENABLED=true
 ```
 
-## 🤝 Contributing
+### Multi-Environment Setup
+Use different profiles:
+- Development: `NRDOT_PROFILE=conservative`
+- Staging: `NRDOT_PROFILE=balanced`
+- Production: `NRDOT_PROFILE=aggressive`
 
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/amazing-feature`
-3. Follow existing code organization in `scripts/` directories
-4. Add tests and documentation
-5. Submit pull request
+## 🤝 Support
+
+- Documentation: See `docs/` directory
+- Issues: Create GitHub issue
+- Logs: Always include `docker-compose logs`
 
 ## 📄 License
 
-This project is licensed under the Apache 2.0 License.
-
-## 🆘 Support
-
-- **Issues**: [GitHub Issues](https://github.com/deepaucksharma/DashBuilder/issues)
-- **Documentation**: See `docs/` directory
-- **Examples**: Check `scripts/examples/` and `automation/src/examples/`
-- **Scripts**: See `scripts/INDEX.md` for complete reference
+Apache 2.0 - See LICENSE file
 
 ---
 
-**Quick Links:**
-- 🎯 [Start Here: setup.sh](./setup.sh)
-- 📦 [Deploy: scripts/deployment/](./scripts/deployment/)
-- ✅ [Validate: scripts/validation/](./scripts/validation/)
-- 📋 [Scripts Reference: scripts/INDEX.md](./scripts/INDEX.md)
-- 🐳 [Docker Guide: docker/README.md](./docker/README.md)
-
-Built with ❤️ for New Relic users who want to optimize costs without compromising observability.
+**Ready to save 70-85% on your New Relic costs?** Run `./master-setup.sh` now!

@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from './logger.js';
+import { testConnection, validateQuery } from '../../lib/shared/index.js';
 
 const execAsync = promisify(exec);
 
@@ -66,21 +67,16 @@ export class ValidationService {
         };
       }
 
-      // Test API connectivity
-      const { stdout } = await execAsync(
-        `cd scripts && node src/cli.js nrql query --query "SELECT count(*) FROM Transaction SINCE 1 hour ago"`,
-        {
-          env: {
-            ...process.env,
-            NEW_RELIC_API_KEY: apiKey,
-            NEW_RELIC_ACCOUNT_ID: accountId
-          }
-        }
-      );
+      // Set environment variables for the shared library
+      process.env.NEW_RELIC_API_KEY = apiKey;
+      process.env.NEW_RELIC_ACCOUNT_ID = accountId;
+
+      // Test API connectivity using direct function call
+      const result = await testConnection();
 
       return {
-        status: 'passed',
-        message: 'API connectivity verified'
+        status: result.connected ? 'passed' : 'failed',
+        message: result.message
       };
     } catch (error) {
       return {

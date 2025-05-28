@@ -1,0 +1,197 @@
+# NRDOT Experiment Configuration Schema
+# This defines the structure for running systematic experiments
+
+experiment:
+  # Unique identifier for the experiment
+  id: "exp-001"
+  name: "NRDOT Cost Optimization Baseline"
+  description: "Compare baseline NRDOT with various optimization profiles"
+  
+  # Experiment metadata
+  metadata:
+    created_by: "system"
+    created_at: "2024-01-01T00:00:00Z"
+    tags: ["cost-optimization", "process-filtering", "baseline"]
+  
+  # Duration and timing
+  duration:
+    warmup_minutes: 5
+    test_minutes: 30
+    cooldown_minutes: 5
+  
+  # Containers to launch
+  containers:
+    # Control group - standard NRDOT
+    control:
+      name: "nrdot-control"
+      image: "nrdot:latest"
+      config_profile: "baseline"
+      replicas: 1
+      environment:
+        NRDOT_MODE: "standard"
+        ENABLE_METRICS: "true"
+    
+    # Test groups - NRDOT Plus with different configs
+    test_groups:
+      - name: "nrdot-plus-conservative"
+        image: "nrdot-plus:latest"
+        config_profile: "conservative"
+        replicas: 1
+        environment:
+          NRDOT_MODE: "optimized"
+          OPTIMIZATION_LEVEL: "conservative"
+          ENABLE_METRICS: "true"
+      
+      - name: "nrdot-plus-balanced"
+        image: "nrdot-plus:latest"
+        config_profile: "balanced"
+        replicas: 1
+        environment:
+          NRDOT_MODE: "optimized"
+          OPTIMIZATION_LEVEL: "balanced"
+          ENABLE_METRICS: "true"
+      
+      - name: "nrdot-plus-aggressive"
+        image: "nrdot-plus:latest"
+        config_profile: "aggressive"
+        replicas: 1
+        environment:
+          NRDOT_MODE: "optimized"
+          OPTIMIZATION_LEVEL: "aggressive"
+          ENABLE_METRICS: "true"
+  
+  # Metrics to collect
+  metrics:
+    collection_interval_seconds: 30
+    
+    # Key metrics to track
+    primary_metrics:
+      - name: "telemetry_volume"
+        query: "SELECT sum(nrdot.bytes.sent) FROM Metric WHERE service.name LIKE 'nrdot%' SINCE 1 minute ago"
+        unit: "bytes"
+      
+      - name: "process_count"
+        query: "SELECT uniqueCount(process.name) FROM ProcessSample WHERE nrdot.version IS NOT NULL SINCE 1 minute ago"
+        unit: "count"
+      
+      - name: "estimated_cost"
+        query: "SELECT latest(nrdot.estimated.cost.hourly) FROM Metric WHERE service.name LIKE 'nrdot%'"
+        unit: "usd_per_hour"
+      
+      - name: "cpu_utilization"
+        query: "SELECT average(container.cpu.percent) FROM ContainerSample WHERE containerName LIKE 'nrdot%' SINCE 1 minute ago"
+        unit: "percent"
+      
+      - name: "memory_usage"
+        query: "SELECT average(container.memory.usage) FROM ContainerSample WHERE containerName LIKE 'nrdot%' SINCE 1 minute ago"
+        unit: "bytes"
+    
+    # Secondary metrics for analysis
+    secondary_metrics:
+      - name: "dropped_metrics"
+        query: "SELECT sum(otelcol_processor_dropped_metric_points) FROM Metric WHERE service.name LIKE 'nrdot%' SINCE 1 minute ago"
+      
+      - name: "error_rate"
+        query: "SELECT percentage(count(*), WHERE error IS NOT NULL) FROM Log WHERE service.name LIKE 'nrdot%' SINCE 1 minute ago"
+      
+      - name: "pipeline_latency"
+        query: "SELECT average(otelcol_processor_batch_timeout_trigger_send) FROM Metric WHERE service.name LIKE 'nrdot%' SINCE 1 minute ago"
+  
+  # Success criteria
+  success_criteria:
+    # Minimum requirements
+    requirements:
+      - metric: "process_count"
+        operator: ">="
+        threshold: 50
+        description: "Must monitor at least 50 unique processes"
+      
+      - metric: "error_rate"
+        operator: "<"
+        threshold: 5
+        description: "Error rate must be below 5%"
+    
+    # Goals to achieve
+    goals:
+      - metric: "telemetry_volume"
+        operator: "<"
+        baseline_percentage: 70
+        description: "Reduce telemetry volume by at least 30%"
+      
+      - metric: "estimated_cost"
+        operator: "<"
+        baseline_percentage: 75
+        description: "Reduce estimated cost by at least 25%"
+  
+  # Workload generator configuration
+  workload:
+    enabled: true
+    type: "synthetic"
+    
+    # Process simulation
+    processes:
+      total_count: 100
+      distribution:
+        critical: 20      # 20% critical processes
+        important: 30     # 30% important processes
+        standard: 50      # 50% standard processes
+      
+      # Activity patterns
+      activity_patterns:
+        - name: "steady"
+          percentage: 60
+          cpu_range: [5, 15]
+          memory_range: [100, 500]  # MB
+        
+        - name: "spiky"
+          percentage: 30
+          cpu_range: [10, 80]
+          memory_range: [200, 2000]  # MB
+        
+        - name: "idle"
+          percentage: 10
+          cpu_range: [0, 5]
+          memory_range: [50, 100]  # MB
+  
+  # Comparison settings
+  comparison:
+    baseline: "control"
+    
+    # What to compare
+    dimensions:
+      - name: "cost_reduction"
+        primary_metric: "estimated_cost"
+        calculation: "percentage_change"
+      
+      - name: "data_reduction"
+        primary_metric: "telemetry_volume"
+        calculation: "percentage_change"
+      
+      - name: "coverage_maintained"
+        primary_metric: "process_count"
+        calculation: "absolute_difference"
+      
+      - name: "resource_efficiency"
+        metrics: ["cpu_utilization", "memory_usage"]
+        calculation: "weighted_average"
+  
+  # Output configuration
+  output:
+    # Where to store results
+    storage:
+      type: "local"
+      path: "./experiment-results/${experiment.id}"
+    
+    # Reports to generate
+    reports:
+      - type: "summary"
+        format: "markdown"
+        include_charts: true
+      
+      - type: "detailed"
+        format: "json"
+        include_raw_data: true
+      
+      - type: "dashboard"
+        format: "new_relic_dashboard"
+        dashboard_name: "NRDOT Experiment ${experiment.id}"

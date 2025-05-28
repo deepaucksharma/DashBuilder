@@ -14,6 +14,7 @@ import { DashboardCommand } from './commands/dashboard.js';
 import { EntityCommand } from './commands/entity.js';
 import { IngestCommand } from './commands/ingest.js';
 import { LLMCommand } from './commands/llm.js';
+import { ExperimentCommand } from './commands/experiment.js';
 
 // Load environment variables
 dotenv.config();
@@ -51,6 +52,7 @@ async function main() {
   program.addCommand(new EntityCommand().getCommand());
   program.addCommand(new IngestCommand().getCommand());
   program.addCommand(new LLMCommand().getCommand());
+  program.addCommand(new ExperimentCommand().getCommand());
 
   // Global error handling
   program.exitOverride();

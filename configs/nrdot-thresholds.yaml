@@ -1,0 +1,85 @@
+# NRDOT v2 Process Optimization Thresholds Configuration
+# These thresholds control when processes are considered for optimization
+
+process_optimization:
+  # Maximum number of processes per host before considering optimization
+  max_processes_per_host: 50
+  
+  # Number of processes to keep when optimization is triggered
+  processes_to_keep: 25
+  
+  # High-frequency sampling threshold (in seconds)
+  # Processes sampling more frequently than this are candidates for optimization
+  high_frequency_threshold_seconds: 15
+  
+  # Memory threshold for large processes (in bytes)
+  large_process_memory_bytes: 1073741824  # 1GB
+  
+  # Minimum event count to consider a process for optimization
+  min_event_count_threshold: 1000
+  
+  # Cost multipliers for different scenarios
+  cost_multipliers:
+    high_volume: 1.5
+    redundant: 1.2
+    high_frequency: 1.3
+
+# Cost model coefficients for telemetry calculation
+cost_model:
+  # Base cost per GB of ingested data
+  base_ingestion_cost_per_gb: 0.25
+  
+  # Additional multipliers
+  query_execution_multiplier: 0.1
+  storage_retention_multiplier: 0.05
+  
+  # Complexity factors
+  complexity_factors:
+    simple: 1.0
+    moderate: 1.2
+    complex: 1.5
+  
+  # Cardinality impact
+  cardinality_impact:
+    low: 1.0      # < 100 unique values
+    medium: 1.2   # 100-1000 unique values
+    high: 1.5     # > 1000 unique values
+
+# Query limits for preventing unbounded data
+query_limits:
+  # Default limit for NRQL queries
+  default_limit: 1000
+  
+  # Maximum limit allowed
+  max_limit: 2000
+  
+  # Limit for process discovery queries
+  process_discovery_limit: 100
+  
+  # Limit for top processes by volume
+  top_processes_limit: 50
+  
+  # Batch size for parallel processing
+  batch_size: 10
+
+# Monitoring and alerting thresholds
+monitoring:
+  # API rate limiting
+  api_rate_limit_per_minute: 25
+  
+  # Health check intervals (in minutes)
+  health_check_interval: 5
+  
+  # Metrics collection interval (in minutes)
+  metrics_collection_interval: 1
+  
+  # Alert thresholds
+  alerts:
+    # Percentage of failed health checks before alerting
+    health_check_failure_threshold: 50
+    
+    # API error rate threshold (percentage)
+    api_error_rate_threshold: 10
+    
+    # Process count threshold for alerting
+    high_process_count_alert: 100

@@ -1,14 +1,69 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  external_labels:
+    monitor: 'dashbuilder-monitor'
+    environment: 'production'
 
 scrape_configs:
+  # OpenTelemetry Collector metrics
   - job_name: 'otel-collector'
     static_configs:
-      - targets: ['nrdot-complete:8888']
+      - targets: ['nrdot-collector:8888']
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'otel-collector'
+    
+  # DashBuilder application metrics
+  - job_name: 'dashbuilder'
+    static_configs:
+      - targets: ['dashbuilder:3000']
     metrics_path: '/metrics'
     
-  - job_name: 'otel-collector-dedicated'
+  # Control Loop metrics
+  - job_name: 'control-loop'
     static_configs:
-      - targets: ['nrdot-otel:8888']
+      - targets: ['control-loop:9090']
+    metrics_path: '/metrics'
+    
+  # Node Exporter for host metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    
+  # cAdvisor for container metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    metrics_path: '/metrics'
+    
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    
+  # Grafana metrics
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+    metrics_path: '/metrics'
+    
+  # Jaeger metrics
+  - job_name: 'jaeger'
+    static_configs:
+      - targets: ['jaeger:14269']
+    metrics_path: '/metrics'
+    
+  # Tempo metrics
+  - job_name: 'tempo'
+    static_configs:
+      - targets: ['tempo:3200']
+    metrics_path: '/metrics'
+    
+  # Docker daemon metrics (if exposed)
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['host.docker.internal:9323']
     metrics_path: '/metrics'

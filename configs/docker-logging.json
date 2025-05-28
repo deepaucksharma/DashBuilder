@@ -1,0 +1,10 @@
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "50m",
+    "max-file": "5",
+    "labels": "service,version,environment",
+    "env": "NODE_ENV,OPTIMIZATION_MODE,SERVICE_NAME",
+    "tag": "{{.Name}}/{{.ID}}"
+  }
+}

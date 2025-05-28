@@ -10,7 +10,7 @@ import path from 'path';
 import { ConfigManager } from '../lib/config-manager.js';
 import { ValidationService } from '../lib/validation-service.js';
 import { logger } from '../lib/logger.js';
-import PQueue from 'p-queue';
+import { createDashboard as createDashboardDirect } from '../../lib/shared/index.js';
 
 const execAsync = promisify(exec);
 
@@ -18,7 +18,6 @@ export class CreateDashboardWorkflow {
   constructor() {
     this.config = new ConfigManager();
     this.validator = new ValidationService();
-    this.queue = new PQueue({ concurrency: 2 });
   }
 
   async run(options = {}) {
@@ -77,7 +76,7 @@ export class CreateDashboardWorkflow {
         type: 'checkbox',
         name: 'widgets',
         message: 'Select widgets to include:',
-        choices: this.getWidgetChoices(answers.type)
+        choices: (answers) => this.getWidgetChoices(answers.type)
       },
       {
         type: 'input',
@@ -214,35 +213,19 @@ export class CreateDashboardWorkflow {
     const spinner = ora('Creating dashboard...').start();
 
     try {
-      // Save dashboard config
-      const tempFile = path.join(process.cwd(), 'temp-dashboard.json');
-      await fs.writeFile(tempFile, JSON.stringify(config, null, 2));
+      // Set environment variables for the shared library
+      process.env.NEW_RELIC_API_KEY = this.config.get('apiKeys.userKey');
+      process.env.NEW_RELIC_ACCOUNT_ID = this.config.get('newrelic.accountId');
 
-      // Create dashboard using CLI
-      const { stdout } = await execAsync(
-        `cd scripts && node src/cli.js dashboard create --file ${tempFile}`,
-        {
-          env: {
-            ...process.env,
-            NEW_RELIC_API_KEY: this.config.get('apiKeys.userKey'),
-            NEW_RELIC_ACCOUNT_ID: this.config.get('newrelic.accountId')
-          }
-        }
-      );
-
-      // Parse dashboard ID from output
-      const dashboardMatch = stdout.match(/Dashboard created with ID: ([a-f0-9-]+)/);
-      const dashboardId = dashboardMatch ? dashboardMatch[1] : null;
-
-      // Clean up temp file
-      await fs.unlink(tempFile);
+      // Create dashboard using direct function call
+      const result = await createDashboardDirect(config);
 
       spinner.succeed('Dashboard created');
 
       return {
         ...config,
-        id: dashboardId,
-        url: `https://one.newrelic.com/dashboards/${dashboardId}`,
+        id: result.id,
+        url: result.url,
         createdAt: new Date().toISOString()
       };
 

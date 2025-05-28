@@ -6,6 +6,7 @@ import { Config } from '../core/config.js';
 import { Output } from '../utils/output.js';
 import { validateEntityGuid, validateDashboard } from '../utils/validators.js';
 import { logger } from '../utils/logger.js';
+import { CLIError, ValidationError, APIError, withCLIErrorHandler } from '../utils/cli-error-handler.js';
 
 export class DashboardCommand {
   getCommand() {
@@ -17,17 +18,17 @@ export class DashboardCommand {
       .description('List all dashboards in account')
       .option('--account-id <id>', 'Override default account ID')
       .option('--limit <n>', 'Maximum number of dashboards', parseInt, 100)
-      .action(async (options) => {
+      .action(withCLIErrorHandler(async (options) => {
         await this.listDashboards(options, dashboard.parent.opts());
-      });
+      }));
 
     dashboard
       .command('export <guid>')
       .description('Export dashboard to JSON file')
       .option('-o, --output <file>', 'Output file path')
-      .action(async (guid, options) => {
+      .action(withCLIErrorHandler(async (guid, options) => {
         await this.exportDashboard(guid, options, dashboard.parent.opts());
-      });
+      }));
 
     dashboard
       .command('import <filePath>')
@@ -35,33 +36,33 @@ export class DashboardCommand {
       .option('--account-id <id>', 'Override default account ID')
       .option('--update-existing <guid>', 'Update existing dashboard instead of creating new')
       .option('--dry-run', 'Validate without importing')
-      .action(async (filePath, options) => {
+      .action(withCLIErrorHandler(async (filePath, options) => {
         await this.importDashboard(filePath, options, dashboard.parent.opts());
-      });
+      }));
 
     dashboard
       .command('validate-json <filePath>')
       .description('Validate dashboard JSON structure')
-      .action(async (filePath, options) => {
+      .action(withCLIErrorHandler(async (filePath, options) => {
         await this.validateJSON(filePath, options, dashboard.parent.opts());
-      });
+      }));
 
     dashboard
       .command('validate-widgets <guidOrFile>')
       .description('Validate all queries in dashboard widgets')
       .option('--account-id <id>', 'Override default account ID')
       .option('--fix-suggestions', 'Include fix suggestions for invalid queries')
-      .action(async (guidOrFile, options) => {
+      .action(withCLIErrorHandler(async (guidOrFile, options) => {
         await this.validateWidgets(guidOrFile, options, dashboard.parent.opts());
-      });
+      }));
 
     dashboard
       .command('find-broken-widgets <guidOrFile>')
       .description('Find widgets with errors or no data')
       .option('--account-id <id>', 'Override default account ID')
-      .action(async (guidOrFile, options) => {
+      .action(withCLIErrorHandler(async (guidOrFile, options) => {
         await this.findBrokenWidgets(guidOrFile, options, dashboard.parent.opts());
-      });
+      }));
 
     dashboard
       .command('analyze-performance <guidOrFile>')
@@ -119,8 +120,7 @@ export class DashboardCommand {
       });
     } catch (error) {
       output.stopSpinner(false, 'Failed to list dashboards');
-      output.error(error.message, error);
-      process.exit(1);
+      throw new APIError(`Failed to list dashboards: ${error.message}`, error);
     }
   }
 
@@ -145,8 +145,7 @@ export class DashboardCommand {
       output.info(`Total widgets: ${dashboard.pages.reduce((sum, p) => sum + p.widgets.length, 0)}`);
     } catch (error) {
       output.stopSpinner(false, 'Failed to export dashboard');
-      output.error(error.message, error);
-      process.exit(1);
+      throw new APIError(`Failed to export dashboard: ${error.message}`, error);
     }
   }
 
@@ -166,11 +165,8 @@ export class DashboardCommand {
       
       if (!validation.valid) {
         output.stopSpinner(false, 'Dashboard validation failed');
-        output.error('Validation errors:');
-        validation.errors.forEach(error => {
-          output.error(`  • ${error}`);
-        });
-        process.exit(1);
+        const errorDetails = validation.errors.map(e => `• ${e}`).join('\n');
+        throw new ValidationError(`Dashboard validation failed:\n${errorDetails}`, validation.errors);
       }
 
       if (options.dryRun) {
@@ -194,8 +190,7 @@ export class DashboardCommand {
       output.success(`GUID: ${result.guid}`);
     } catch (error) {
       output.stopSpinner(false, 'Failed to import dashboard');
-      output.error(error.message, error);
-      process.exit(1);
+      throw error instanceof CLIError ? error : new APIError(`Failed to import dashboard: ${error.message}`, error);
     }
   }
 
@@ -216,12 +211,12 @@ export class DashboardCommand {
 
       if (!validation.valid) {
         output.error('Validation failed');
-        process.exit(1);
+        throw new CLIError("Operation failed");
       }
     } catch (error) {
       output.stopSpinner(false, 'Failed to validate dashboard');
       output.error(error.message, error);
-      process.exit(1);
+      throw new CLIError("Operation failed");
     }
   }
 
@@ -258,12 +253,12 @@ export class DashboardCommand {
           });
         }
         
-        process.exit(1);
+        throw new CLIError("Operation failed");
       }
     } catch (error) {
       output.stopSpinner(false, 'Failed to validate widgets');
       output.error(error.message, error);
-      process.exit(1);
+      throw new CLIError("Operation failed");
     }
   }
 
@@ -290,12 +285,12 @@ export class DashboardCommand {
           table: true,
           columns: ['page', 'widget', 'error', 'suggestion']
         });
-        process.exit(1);
+        throw new ValidationError(`Found ${brokenWidgets.length} broken widgets`, brokenWidgets);
       }
     } catch (error) {
       output.stopSpinner(false, 'Failed to check widgets');
       output.error(error.message, error);
-      process.exit(1);
+      throw error instanceof CLIError ? error : new APIError(`Failed to check widgets: ${error.message}`, error);
     }
   }
 
@@ -329,7 +324,7 @@ export class DashboardCommand {
     } catch (error) {
       output.stopSpinner(false, 'Failed to analyze performance');
       output.error(error.message, error);
-      process.exit(1);
+      throw new CLIError("Operation failed");
     }
   }
 
@@ -353,12 +348,12 @@ export class DashboardCommand {
 
       if (!usage.allValid) {
         output.error('Some attributes are not available in the specified event type');
-        process.exit(1);
+        throw new CLIError("Operation failed");
       }
     } catch (error) {
       output.stopSpinner(false, 'Failed to check attribute usage');
       output.error(error.message, error);
-      process.exit(1);
+      throw new CLIError("Operation failed");
     }
   }
 
@@ -412,12 +407,12 @@ export class DashboardCommand {
 
       if (successCount < targetAccountIds.length) {
         output.error(`Failed to replicate to ${targetAccountIds.length - successCount} accounts`);
-        process.exit(1);
+        throw new CLIError("Operation failed");
       }
     } catch (error) {
       output.stopSpinner(false, 'Failed to replicate dashboard');
       output.error(error.message, error);
-      process.exit(1);
+      throw new CLIError("Operation failed");
     }
   }
 
@@ -436,7 +431,7 @@ export class DashboardCommand {
         // In a real implementation, we'd prompt for confirmation here
         // For now, we'll require --confirm flag
         output.error('Use --confirm flag to delete without prompt');
-        process.exit(1);
+        throw new CLIError("Operation failed");
       }
       
       output.startSpinner('Deleting dashboard...');
@@ -446,12 +441,12 @@ export class DashboardCommand {
         output.stopSpinner(true, 'Dashboard deleted successfully');
       } else {
         output.stopSpinner(false, 'Failed to delete dashboard');
-        process.exit(1);
+        throw new CLIError("Operation failed");
       }
     } catch (error) {
       output.stopSpinner(false, 'Failed to delete dashboard');
       output.error(error.message, error);
-      process.exit(1);
+      throw new CLIError("Operation failed");
     }
   }
 

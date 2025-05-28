@@ -1,0 +1,204 @@
+# Performance Impact Experiment
+# Tests the resource usage impact of different optimization levels
+
+experiment:
+  id: "perf-impact"
+  name: "Performance Impact Analysis"
+  description: "Measure CPU and memory impact of NRDOT optimization levels to ensure acceptable resource usage"
+  
+  metadata:
+    created_by: "nrdot-team"
+    created_at: "2024-01-01T00:00:00Z"
+    tags: ["performance", "resource-usage", "comprehensive"]
+  
+  duration:
+    warmup_minutes: 5
+    test_minutes: 30
+    cooldown_minutes: 5
+  
+  containers:
+    control:
+      name: "nrdot-baseline"
+      image: "dashbuilder-nrdot:latest"
+      config_profile: "baseline"
+      replicas: 1
+      resources:
+        limits:
+          memory: "512Mi"
+          cpu: "500m"
+      environment:
+        NEW_RELIC_API_KEY: "${NEW_RELIC_API_KEY}"
+        NEW_RELIC_ACCOUNT_ID: "${NEW_RELIC_ACCOUNT_ID}"
+        NRDOT_MODE: "standard"
+        ENABLE_METRICS: "true"
+        ENABLE_PROFILING: "true"
+    
+    test_groups:
+      - name: "nrdot-conservative"
+        image: "dashbuilder-nrdot:latest"
+        config_profile: "conservative"
+        replicas: 1
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        environment:
+          NEW_RELIC_API_KEY: "${NEW_RELIC_API_KEY}"
+          NEW_RELIC_ACCOUNT_ID: "${NEW_RELIC_ACCOUNT_ID}"
+          NRDOT_MODE: "optimized"
+          OPTIMIZATION_LEVEL: "conservative"
+          ENABLE_METRICS: "true"
+          ENABLE_PROFILING: "true"
+      
+      - name: "nrdot-balanced"
+        image: "dashbuilder-nrdot:latest"
+        config_profile: "balanced"
+        replicas: 1
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        environment:
+          NEW_RELIC_API_KEY: "${NEW_RELIC_API_KEY}"
+          NEW_RELIC_ACCOUNT_ID: "${NEW_RELIC_ACCOUNT_ID}"
+          NRDOT_MODE: "optimized"
+          OPTIMIZATION_LEVEL: "balanced"
+          ENABLE_METRICS: "true"
+          ENABLE_PROFILING: "true"
+      
+      - name: "nrdot-aggressive"
+        image: "dashbuilder-nrdot:latest"
+        config_profile: "aggressive"
+        replicas: 1
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        environment:
+          NEW_RELIC_API_KEY: "${NEW_RELIC_API_KEY}"
+          NEW_RELIC_ACCOUNT_ID: "${NEW_RELIC_ACCOUNT_ID}"
+          NRDOT_MODE: "optimized"
+          OPTIMIZATION_LEVEL: "aggressive"
+          ENABLE_METRICS: "true"
+          ENABLE_PROFILING: "true"
+  
+  metrics:
+    collection_interval_seconds: 60
+    
+    primary_metrics:
+      - name: "cpu_usage_percent"
+        query: "SELECT average(container.cpu.percent) FROM ContainerSample WHERE containerName LIKE 'nrdot%' SINCE 2 minutes ago"
+        unit: "percent"
+      
+      - name: "memory_usage_mb"
+        query: "SELECT average(container.memory.usage) / 1048576 FROM ContainerSample WHERE containerName LIKE 'nrdot%' SINCE 2 minutes ago"
+        unit: "megabytes"
+      
+      - name: "processing_rate"
+        query: "SELECT rate(sum(otelcol_processor_accepted_metric_points), 1 minute) FROM Metric WHERE service.name LIKE 'nrdot%' SINCE 2 minutes ago"
+        unit: "metrics_per_minute"
+      
+      - name: "processing_latency_ms"
+        query: "SELECT average(otelcol_processor_batch_timeout_trigger_send) * 1000 FROM Metric WHERE service.name LIKE 'nrdot%' SINCE 2 minutes ago"
+        unit: "milliseconds"
+      
+      - name: "gc_pause_time"
+        query: "SELECT sum(gc.pause.time) FROM Metric WHERE service.name LIKE 'nrdot%' SINCE 2 minutes ago"
+        unit: "milliseconds"
+    
+    secondary_metrics:
+      - name: "heap_usage"
+        query: "SELECT average(runtime.memory.heap.used) / 1048576 FROM Metric WHERE service.name LIKE 'nrdot%' SINCE 2 minutes ago"
+      
+      - name: "goroutines"
+        query: "SELECT average(runtime.goroutines) FROM Metric WHERE service.name LIKE 'nrdot%' SINCE 2 minutes ago"
+      
+      - name: "open_file_descriptors"
+        query: "SELECT average(process.open_fds) FROM Metric WHERE service.name LIKE 'nrdot%' SINCE 2 minutes ago"
+  
+  success_criteria:
+    requirements:
+      - metric: "cpu_usage_percent"
+        operator: "<"
+        threshold: 80
+        description: "CPU usage must stay below 80%"
+      
+      - metric: "memory_usage_mb"
+        operator: "<"
+        threshold: 400
+        description: "Memory usage must stay below 400MB"
+      
+      - metric: "processing_latency_ms"
+        operator: "<"
+        threshold: 100
+        description: "Processing latency must stay below 100ms"
+    
+    goals:
+      - metric: "cpu_usage_percent"
+        operator: "<"
+        baseline_percentage: 110
+        description: "CPU overhead should be minimal (<10% increase)"
+      
+      - metric: "memory_usage_mb"
+        operator: "<"
+        baseline_percentage: 120
+        description: "Memory overhead should be minimal (<20% increase)"
+  
+  workload:
+    enabled: true
+    type: "stress"
+    
+    # Stress test configuration
+    stress_patterns:
+      - name: "burst"
+        duration_seconds: 300
+        processes: 200
+        events_per_second: 1000
+        
+      - name: "sustained"
+        duration_seconds: 600
+        processes: 100
+        events_per_second: 500
+        
+      - name: "variable"
+        duration_seconds: 900
+        processes: 50
+        events_per_second: "100-1000"
+  
+  comparison:
+    baseline: "control"
+    dimensions:
+      - name: "cpu_overhead"
+        primary_metric: "cpu_usage_percent"
+        calculation: "percentage_change"
+      
+      - name: "memory_overhead"
+        primary_metric: "memory_usage_mb"
+        calculation: "percentage_change"
+      
+      - name: "processing_efficiency"
+        primary_metric: "processing_rate"
+        calculation: "absolute_difference"
+      
+      - name: "latency_impact"
+        primary_metric: "processing_latency_ms"
+        calculation: "percentage_change"
+  
+  output:
+    storage:
+      type: "local"
+      path: "./experiment-results/${experiment.id}"
+    
+    reports:
+      - type: "performance"
+        format: "html"
+        include_charts: true
+        charts:
+          - type: "timeseries"
+            metrics: ["cpu_usage_percent", "memory_usage_mb"]
+          - type: "heatmap"
+            metric: "processing_latency_ms"
+      
+      - type: "detailed"
+        format: "json"
+        include_raw_data: true

@@ -1,98 +1,204 @@
-# Baseline NRDOT Configuration - No Optimizations
-# This configuration collects ALL process metrics without any filtering
-
-extensions:
-  health_check:
-    endpoint: "0.0.0.0:13133"
-    path: "/health"
+# Baseline OpenTelemetry Collector Configuration
+# Full telemetry collection with New Relic export
 
 receivers:
-  # Collect ALL process metrics without filtering
+  # Host metrics collection - baseline profile
   hostmetrics:
-    collection_interval: 60s
+    collection_interval: 30s
     scrapers:
-      process:
-        # No exclusions - collect everything
-        mute_process_name_error: false
-        mute_process_exe_error: false
-        mute_process_io_error: false
-    
-      # Other system metrics
       cpu:
-      memory:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+          system.cpu.time:
+            enabled: true
       disk:
-      network:
+        metrics:
+          system.disk.io:
+            enabled: true
+          system.disk.operations:
+            enabled: true
       filesystem:
+        metrics:
+          system.filesystem.usage:
+            enabled: true
+          system.filesystem.utilization:
+            enabled: true
       load:
+        metrics:
+          system.cpu.load_average.1m:
+            enabled: true
+          system.cpu.load_average.5m:
+            enabled: true
+          system.cpu.load_average.15m:
+            enabled: true
+      memory:
+        metrics:
+          system.memory.usage:
+            enabled: true
+          system.memory.utilization:
+            enabled: true
+      network:
+        metrics:
+          system.network.io:
+            enabled: true
+          system.network.errors:
+            enabled: true
+          system.network.packets:
+            enabled: true
+      paging:
+        metrics:
+          system.paging.usage:
+            enabled: true
+      processes:
+        metrics:
+          system.processes.count:
+            enabled: true
+          system.processes.created:
+            enabled: true
+      process:
+        metrics:
+          process.cpu.time:
+            enabled: true
+          process.cpu.utilization:
+            enabled: true
+          process.memory.physical:
+            enabled: true
+          process.memory.virtual:
+            enabled: true
 
-  # Prometheus metrics endpoint
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: 'otel-collector'
-          scrape_interval: 10s
-          static_configs:
-            - targets: ['0.0.0.0:8888']
+  # OTLP receiver for traces and metrics
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Docker stats receiver if available
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    collection_interval: 30s
+    timeout: 20s
+    metrics:
+      container.cpu.percent:
+        enabled: true
+      container.memory.percent:
+        enabled: true
 
 processors:
-  # Basic batch processing
-  batch:
-    timeout: 10s
-    send_batch_size: 1000
-    
-  # Add resource attributes
-  resource:
-    attributes:
-      - key: experiment.name
-        value: baseline
-        action: insert
-      - key: experiment.profile
-        value: no-optimization
-        action: insert
-      - key: service.name
-        value: nrdot-baseline
-        action: insert
-      - key: service.version
-        value: "2.0"
-        action: insert
-
-  # Memory limiter to prevent OOM
+  # Memory limiter
   memory_limiter:
     check_interval: 1s
     limit_mib: 512
     spike_limit_mib: 128
 
+  # Batch processor
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+  # Resource detection
+  resourcedetection:
+    detectors: [env, system, docker]
+    timeout: 5s
+
+  # Add attributes
+  attributes:
+    actions:
+      - key: service.name
+        value: ${OTEL_SERVICE_NAME:-nrdot}
+        action: upsert
+      - key: service.version
+        value: "2.0"
+        action: upsert
+      - key: nrdot.profile
+        value: baseline
+        action: upsert
+      - key: deployment.environment
+        value: ${NODE_ENV:-production}
+        action: upsert
+
+  # Metrics transform for NRDOT KPIs
+  metricstransform:
+    transforms:
+      - include: system.cpu.utilization
+        match_type: strict
+        action: insert
+        new_name: nrdot.cpu.utilization
+      - include: system.memory.utilization
+        match_type: strict
+        action: insert
+        new_name: nrdot.memory.utilization
+      - include: process.cpu.utilization
+        match_type: strict
+        action: insert
+        new_name: nrdot.process.cpu.utilization
+      - include: process.memory.physical
+        match_type: strict
+        action: insert
+        new_name: nrdot.process.memory.usage
+
 exporters:
-  # Send to New Relic
-  otlp:
-    endpoint: "${NEW_RELIC_OTLP_ENDPOINT}"
+  # New Relic OTLP exporter
+  otlp/newrelic:
+    endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-https://otlp.nr-data.net}:4317
     headers:
-      api-key: "${NEW_RELIC_API_KEY}"
+      api-key: ${NEW_RELIC_LICENSE_KEY}
     compression: gzip
-    
+    tls:
+      insecure: false
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 5m
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 5000
+
   # Debug logging
   logging:
     loglevel: info
     sampling_initial: 10
     sampling_thereafter: 100
 
-  # Prometheus metrics
-  prometheus:
-    endpoint: "0.0.0.0:8888"
-    metric_expiration: 5m
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: "/health"
+    check_collector_pipeline:
+      enabled: true
+      interval: 5m
+      exporter_failure_threshold: 5
+
+  memory_ballast:
+    size_in_percentage: 20
 
 service:
-  pipelines:
-    metrics:
-      receivers: [hostmetrics, prometheus]
-      processors: [memory_limiter, batch, resource]
-      exporters: [otlp, prometheus, logging]
-      
-  extensions: [health_check]
-  
   telemetry:
     logs:
       level: info
+      encoding: json
     metrics:
       level: detailed
       address: 0.0.0.0:8888
+
+  extensions: [health_check, memory_ballast]
+  
+  pipelines:
+    metrics:
+      receivers: [hostmetrics, docker_stats, otlp]
+      processors: [memory_limiter, batch, resourcedetection, attributes, metricstransform]
+      exporters: [otlp/newrelic, logging]
+    
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resourcedetection, attributes]
+      exporters: [otlp/newrelic, logging]
+    
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resourcedetection, attributes]
+      exporters: [otlp/newrelic, logging]

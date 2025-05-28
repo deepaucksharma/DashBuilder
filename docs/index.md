@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**Nginx Reverse-proxy Dashboard Orchestration Tool**  
+**New Relic Dashboard Optimization Tool**  
 *Version 2.0 - Enterprise Edition*
 
 [![Framework Version](https://img.shields.io/badge/NRDOT-v2.0-blue)]()

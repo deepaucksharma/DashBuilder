@@ -4,6 +4,9 @@ import { Cache } from '../utils/cache.js';
 import { logger } from '../utils/logger.js';
 import { extractEventTypeFromQuery, extractAttributesFromQuery, calculateQueryComplexity } from '../utils/validators.js';
 import { ValidationError } from '../utils/errors.js';
+import fs from 'fs';
+import yaml from 'js-yaml';
+import path from 'path';
 
 export class IngestService {
   constructor(config) {
@@ -15,26 +18,73 @@ export class IngestService {
       ttl: 300 // 5 minute cache for ingest metrics
     });
     
-    // NRDOT v2: Cost estimation models
-    this.costModels = {
-      processMetrics: {
-        baseIngestionCostPerGB: 0.25,  // Base cost per GB ingested
-        queryExecutionMultiplier: 0.1,  // Cost per query execution
-        storageRetentionMultiplier: 0.05  // Storage cost per GB per month
-      },
-      queryOptimization: {
-        complexityFactors: {
-          low: 1.0,
-          medium: 1.5,
-          high: 2.5
+    // Load thresholds from configuration file
+    this.loadThresholdsConfig();
+  }
+
+  loadThresholdsConfig() {
+    try {
+      const configPath = path.join(process.cwd(), 'configs', 'nrdot-thresholds.yaml');
+      const configContent = fs.readFileSync(configPath, 'utf8');
+      const thresholdsConfig = yaml.load(configContent);
+      
+      // NRDOT v2: Cost estimation models from config
+      this.costModels = {
+        processMetrics: {
+          baseIngestionCostPerGB: thresholdsConfig.cost_model.base_ingestion_cost_per_gb,
+          queryExecutionMultiplier: thresholdsConfig.cost_model.query_execution_multiplier,
+          storageRetentionMultiplier: thresholdsConfig.cost_model.storage_retention_multiplier
         },
-        cardinalityImpact: {
-          low: 1.0,     // <1000 unique values
-          medium: 1.3,   // 1000-10000 unique values
-          high: 2.0      // >10000 unique values
+        queryOptimization: {
+          complexityFactors: thresholdsConfig.cost_model.complexity_factors,
+          cardinalityImpact: thresholdsConfig.cost_model.cardinality_impact
         }
-      }
-    };
+      };
+      
+      // Store threshold values for later use
+      this.thresholds = thresholdsConfig;
+      
+    } catch (error) {
+      logger.warn('Failed to load thresholds config, using defaults:', error.message);
+      
+      // Fallback to hard-coded defaults if config file is not available
+      this.costModels = {
+        processMetrics: {
+          baseIngestionCostPerGB: 0.25,
+          queryExecutionMultiplier: 0.1,
+          storageRetentionMultiplier: 0.05
+        },
+        queryOptimization: {
+          complexityFactors: {
+            simple: 1.0,
+            moderate: 1.2,
+            complex: 1.5
+          },
+          cardinalityImpact: {
+            low: 1.0,
+            medium: 1.2,
+            high: 1.5
+          }
+        }
+      };
+      
+      // Default thresholds
+      this.thresholds = {
+        process_optimization: {
+          max_processes_per_host: 50,
+          processes_to_keep: 25,
+          high_frequency_threshold_seconds: 15,
+          large_process_memory_bytes: 1073741824,
+          min_event_count_threshold: 1000
+        },
+        query_limits: {
+          default_limit: 1000,
+          max_limit: 2000,
+          process_discovery_limit: 100,
+          top_processes_limit: 50
+        }
+      };
+    }
     
     // NRDOT v2: Process metrics cost optimization thresholds
     this.optimizationThresholds = {
@@ -620,7 +670,7 @@ export class IngestService {
         FROM ProcessSample 
         FACET processDisplayName, hostname 
         SINCE ${since} 
-        LIMIT 50
+        LIMIT ${this.thresholds.query_limits.top_processes_limit}
       `;
       
       const result = await this.client.nrql(accountId, query);
@@ -674,8 +724,8 @@ export class IngestService {
       
       for (const item of redundancyResult.results) {
         const processCount = item.processCount || 0;
-        if (processCount > 50) { // More than 50 processes per host might be excessive
-          totalRedundantProcesses += processCount - 25; // Keep 25, consider rest as redundant
+        if (processCount > this.thresholds.process_optimization.max_processes_per_host) {
+          totalRedundantProcesses += processCount - this.thresholds.process_optimization.processes_to_keep;
         }
       }
       
@@ -695,7 +745,7 @@ export class IngestService {
         FROM ProcessSample 
         FACET processDisplayName, hostname
         SINCE ${since}
-        LIMIT 100
+        LIMIT ${this.thresholds.query_limits.process_discovery_limit}
       `;
       
       const samplingResult = await this.client.nrql(accountId, samplingQuery);
@@ -706,7 +756,7 @@ export class IngestService {
         const duration = item.durationSeconds || 1;
         const frequency = samples / duration;
         
-        if (frequency > 1/15) { // More than once every 15 seconds
+        if (frequency > 1/this.thresholds.process_optimization.high_frequency_threshold_seconds) {
           highFrequencyProcesses++;
         }
       }
